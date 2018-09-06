@@ -13436,13 +13436,16 @@ void Player::AbandonQuest(uint32 questId)
     if (Quest const* quest = sObjectMgr->GetQuestTemplate(questId))
     {
         for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
-            if (quest->RequiredItemId[i] > 0 && quest->RequiredItemCount[i] > 0)
-            {
-                if (sObjectMgr->GetItemTemplate(quest->RequiredItemId[i])->Bonding == BIND_QUEST_ITEM)
+            if (ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(quest->RequiredItemId[i]))
+                if (quest->RequiredItemCount[i] > 0 && itemTemplate->Bonding == BIND_QUEST_ITEM)
                     DestroyItemCount(quest->RequiredItemId[i], quest->RequiredItemCount[i], true);
-                else
-                    return;
-            }
+
+#ifdef LICH_KING
+        for (uint8 i = 0; i < QUEST_SOURCE_ITEM_IDS_COUNT; ++i)
+            if (ItemTemplate const* itemTemplate = sObjectMgr->GetItemTemplate(quest->ItemDrop[i]))
+                if (quest->ItemDropQuantity[i] > 0 && itemTemplate->Bonding == BIND_QUEST_ITEM)
+                    DestroyItemCount(quest->ItemDrop[i], 9999, true);
+#endif
     }
 }
 
