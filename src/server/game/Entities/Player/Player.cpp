@@ -13431,6 +13431,21 @@ void Player::FailQuest( uint32 questId )
     SendQuestFailed( questId );
 }
 
+void Player::AbandonQuest(uint32 questId)
+{
+    if (Quest const* quest = sObjectMgr->GetQuestTemplate(questId))
+    {
+        for (uint8 i = 0; i < QUEST_ITEM_OBJECTIVES_COUNT; ++i)
+            if (quest->RequiredItemId[i] > 0 && quest->RequiredItemCount[i] > 0)
+            {
+                if (sObjectMgr->GetItemTemplate(quest->RequiredItemId[i])->Bonding == BIND_QUEST_ITEM)
+                    DestroyItemCount(quest->RequiredItemId[i], quest->RequiredItemCount[i], true);
+                else
+                    return;
+            }
+    }
+}
+
 void Player::FailTimedQuest( uint32 quest_id )
 {
     if( quest_id )
