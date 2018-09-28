@@ -486,8 +486,13 @@ void WorldSession::HandleMovementOpcodes(WorldPacket& recvData)
             plrMover->SaveNoUndermapPosition(movementInfo.pos.GetPositionX(), movementInfo.pos.GetPositionY(), movementInfo.pos.GetPositionZ() + 3.0f);
         }
 
+        if ((plrMover->IsGameMaster() || plrMover->GetCommandStatus(CHEAT_GOD)) && movementInfo.pos.GetPositionZ() < -300.0f)
+        {
+            plrMover->TeleportTo(1, 16225.2f, 16252.9f, 12.8f, 4.2f); // GM Island
+        }
+
         // Teleportation to the cemetery
-        if (movementInfo.pos.GetPositionZ() < -500.0f)
+        if (movementInfo.pos.GetPositionZ() < -300.0f)
         {
             // NOTE: This is actually called many times while falling
             // even after the player has been teleported away
@@ -504,7 +509,6 @@ void WorldSession::HandleMovementOpcodes(WorldPacket& recvData)
                     plrMover->EnvironmentalDamage(DAMAGE_FALL_TO_VOID, plrMover->GetHealth() / 2);
                 }
 
-                // Player can be alive if GM/God
                 if (!plrMover->IsAlive())
                 {
                     // Change the death state to CORPSE to prevent the death timer from
