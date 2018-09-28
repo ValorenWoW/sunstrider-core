@@ -464,31 +464,58 @@ void WorldSession::HandleMovementOpcodes(WorldPacket& recvData)
         mover->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_LANDING); // Parachutes
 #endif
 
-    if (plrMover)                                            // nothing is charmed, or player charmed
+    if (plrMover) // Nothing is charmed, or player charmed
     {
         plrMover->UpdateFallInformationIfNeed(movementInfo, opcode);
 
-        //used to handle spell interrupts on move (client does not always does it by itself)
+        // Used to handle spell interrupts on move (client does not always does it by itself)
         if (plrMover->isMoving())
             plrMover->SetHasMovedInUpdate(true);
 
-        if (movementInfo.pos.GetPositionZ() < plrMover->GetMap()->GetMinHeight(movementInfo.pos.GetPositionX(), movementInfo.pos.GetPositionY()))
+        // Anti Undermap
+        if (movementInfo.HasMovementFlag(MOVEMENTFLAG_FALLING_FAR))
         {
-            if (!(plrMover->GetBattleground() && plrMover->GetBattleground()->HandlePlayerUnderMap(_player)))
+            float height = plrMover->GetMap()->GetHeight(plrMover->GetPositionX(), plrMover->GetPositionY(), plrMover->GetPositionZ(), true);
+            float critHeight = -90000.0f;
+
+            if (height < critHeight)
+                plrMover->UndermapRecall();
+        }
+        else if (plrMover->CanFreeMove())
+        {
+            plrMover->SaveNoUndermapPosition(movementInfo.pos.GetPositionX(), movementInfo.pos.GetPositionY(), movementInfo.pos.GetPositionZ() + 3.0f);
+        }
+
+        // Teleportation to the cemetery
+        if (movementInfo.pos.GetPositionZ() < -500.0f)
+        {
+            // NOTE: This is actually called many times while falling
+            // even after the player has been teleported away
+            // TODO: Discard movement packets after the player is rooted
+            if (plrMover->IsAlive())
             {
-                // NOTE: this is actually called many times while falling
-                // even after the player has been teleported away
-                if (plrMover->IsAlive())
+                // Not dead when we fall
+                if (plrMover->InBattleground())
                 {
-                    plrMover->SetFlag(PLAYER_FLAGS, PLAYER_FLAGS_IS_OUT_OF_BOUNDS);
-                    plrMover->EnvironmentalDamage(DAMAGE_FALL_TO_VOID, GetPlayer()->GetMaxHealth());
-                    // player can be alive if GM/etc
-                    // change the death state to CORPSE to prevent the death timer from
-                    // starting in the next player update
-                    if (!plrMover->IsAlive())
-                        plrMover->KillPlayer();
+                    plrMover->EnvironmentalDamage(DAMAGE_FALL_TO_VOID, plrMover->GetHealth());
+                }
+                else
+                {
+                    plrMover->EnvironmentalDamage(DAMAGE_FALL_TO_VOID, plrMover->GetHealth() / 2);
+                }
+
+                // Player can be alive if GM/God
+                if (!plrMover->IsAlive())
+                {
+                    // Change the death state to CORPSE to prevent the death timer from
+                    // Starting in the next player update
+                    plrMover->KillPlayer();
+                    plrMover->BuildPlayerRepop();
                 }
             }
+
+            // Cancel the death timer here if started
+            plrMover->RepopAtGraveyard();
         }
     }
 
