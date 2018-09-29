@@ -478,7 +478,7 @@ void WorldSession::HandleMovementOpcodes(WorldPacket& recvData)
             float height = plrMover->GetMap()->GetHeight(plrMover->GetPositionX(), plrMover->GetPositionY(), plrMover->GetPositionZ(), true);
             float critHeight = -90000.0f;
 
-            if (height < critHeight)
+            if (plrMover->GetMapId() != 530 && height < critHeight)
                 plrMover->UndermapRecall();
         }
         else if (plrMover->CanFreeMove())
