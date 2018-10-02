@@ -21889,33 +21889,6 @@ void Player::HandleFall(MovementInfo const& movementInfo)
     }
 }
 
-void Player::HandleFallUnderMap()
-{
-    if(InBattleground()
-        && GetBattleground()
-        && GetBattleground()->HandlePlayerUnderMap(this))
-    {
-        // do nothing, the handle already did if returned true
-    }
-    else
-    {
-        // NOTE: this is actually called many times while falling
-        // even after the player has been teleported away
-        // TODO: discard movement packets after the player is rooted
-        if(IsAlive())
-        {
-            EnvironmentalDamage(DAMAGE_FALL_TO_VOID, GetMaxHealth());
-            // change the death state to CORPSE to prevent the death timer from
-            // starting in the next player update
-            KillPlayer();
-            BuildPlayerRepop();
-        }
-
-        // cancel the death timer here if started
-        RepopAtGraveyard();
-    }
-}
-
 void Player::StopCastingBindSight(Aura* except /* = nullptr*/)
 {
     if(WorldObject* target = GetViewpoint())
