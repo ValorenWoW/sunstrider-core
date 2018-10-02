@@ -18,6 +18,7 @@
 #include "Chat.h"
 #include "PlayerAntiCheat.h"
 #include "GameTime.h"
+#include "Map.h"
 
 #define MOVEMENT_PACKET_TIME_DELAY 0
 
@@ -473,33 +474,22 @@ void WorldSession::HandleMovementOpcodes(WorldPacket& recvData)
             plrMover->SetHasMovedInUpdate(true);
 
         // Anti Undermap
-        if (movementInfo.HasMovementFlag(MOVEMENTFLAG_FALLING_FAR))
+        float curPlayerHeight = plrMover->GetMap()->GetHeight(plrMover->GetPositionX(), plrMover->GetPositionY(), plrMover->GetPositionZ(), true);
+        float curMapHeight = plrMover->GetMap()->GetGridMapHeight(plrMover->GetPositionX(), plrMover->GetPositionY());
+        if (curPlayerHeight < curMapHeight) // If player is under map..
         {
-            float height = plrMover->GetMap()->GetHeight(plrMover->GetPositionX(), plrMover->GetPositionY(), plrMover->GetPositionZ(), true);
-            float critHeight = -90000.0f;
-
-            if (plrMover->GetMapId() != 530 && height < critHeight)
-                plrMover->UndermapRecall();
+            plrMover->UndermapRecall(); // Port player back to last safe position
         }
-        else if (plrMover->CanFreeMove())
+        else if (plrMover->CanFreeMove() && !movementInfo.HasMovementFlag(MOVEMENTFLAG_JUMPING_OR_FALLING)) // If player is able to move and not falling or jumping..
         {
-            plrMover->SaveNoUndermapPosition(movementInfo.pos.GetPositionX(), movementInfo.pos.GetPositionY(), movementInfo.pos.GetPositionZ() + 3.0f);
+            plrMover->SaveNoUndermapPosition(movementInfo.pos.GetPositionX(), movementInfo.pos.GetPositionY(), movementInfo.pos.GetPositionZ() + 3.0f); // Save current position for UndermapRecall()
         }
 
-        if ((plrMover->IsGameMaster() || plrMover->GetCommandStatus(CHEAT_GOD)) && movementInfo.pos.GetPositionZ() < -300.0f)
+        // Teleportation to nearest graveyard
+        if (movementInfo.pos.GetPositionZ() < -500.0f)
         {
-            plrMover->TeleportTo(1, 16225.2f, 16252.9f, 12.8f, 4.2f); // GM Island
-        }
-
-        // Teleportation to the cemetery
-        if (movementInfo.pos.GetPositionZ() < -300.0f)
-        {
-            // NOTE: This is actually called many times while falling
-            // even after the player has been teleported away
-            // TODO: Discard movement packets after the player is rooted
-            if (plrMover->IsAlive())
+            if (plrMover->IsAlive()) // Still alive while falling
             {
-                // Not dead when we fall
                 if (plrMover->InBattleground())
                 {
                     plrMover->EnvironmentalDamage(DAMAGE_FALL_TO_VOID, plrMover->GetHealth());
