@@ -1984,6 +1984,7 @@ class TC_GAME_API Unit : public WorldObject
         virtual bool CanSwim() const;
         bool IsFlying() const   { return m_movementInfo.HasMovementFlag(MOVEMENTFLAG_PLAYER_FLYING | MOVEMENTFLAG_DISABLE_GRAVITY); }
         bool IsHovering() const { return m_movementInfo.HasMovementFlag(MOVEMENTFLAG_HOVER); }
+        bool IsOnTransport() const { return m_movementInfo.HasMovementFlag(MOVEMENTFLAG_ONTRANSPORT);}
         bool IsFalling() const;
 
         float GetHoverOffset() const
