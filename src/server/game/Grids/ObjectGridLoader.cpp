@@ -10,6 +10,7 @@
 #include "CellImpl.h"
 #include "Transport.h"
 #include "ScriptMgr.h"
+#include "Battleground.h"
 
 void ObjectGridEvacuator::Visit(CreatureMapType &m)
 {
@@ -106,6 +107,8 @@ void LoadHelper(CellGuidSet const& guid_set, CellCoord &cell, GridRefManager<T> 
 
 void LoadHelper(CellGuidSet const& guid_set, CellCoord &cell, GridRefManager<Creature> &m, uint32 &count, Map* map)
 {
+    Battleground* bg = map->IsBattleground() ? ((BattlegroundMap*)map)->GetBG() : nullptr;
+
     for(auto guid : guid_set)
     {
         // Don't spawn at all if there's a respawn time
@@ -135,12 +138,17 @@ void LoadHelper(CellGuidSet const& guid_set, CellCoord &cell, GridRefManager<Cre
         if (obj->GetRespawnCompatibilityMode())
             map->RemoveRespawnTime(SPAWN_TYPE_CREATURE, obj->GetSpawnId());
 
+        if (bg)
+            bg->OnObjectDBLoad(obj);
+
         AddObjectHelper(cell, m, count, map, obj);
     }
 }
 
 void LoadHelper(CellGuidSet const& guid_set, CellCoord &cell, GridRefManager<GameObject> &m, uint32 &count, Map* map)
 {
+    Battleground* bg = map->IsBattleground() ? ((BattlegroundMap*)map)->GetBG() : nullptr;
+
     for (auto guid : guid_set)
     {
         // Don't spawn at all if there's a respawn time
@@ -160,6 +168,14 @@ void LoadHelper(CellGuidSet const& guid_set, CellCoord &cell, GridRefManager<Gam
         {
             delete obj;
             continue;
+        }
+
+
+        if (bg)
+        {
+            bool addedToMap = bg->OnObjectDBLoad(obj);
+            if (addedToMap)
+                break;
         }
 
         AddObjectHelper(cell, m, count, map, obj);
