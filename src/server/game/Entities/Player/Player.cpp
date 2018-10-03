@@ -6098,7 +6098,7 @@ void Player::CheckAreaExploreAndOutdoor()
     if (IsInFlight())
         return;
 
-    if (IsOnTransport())
+    if (GetTransport())
         return;
 
     if (!IsOutdoors())
