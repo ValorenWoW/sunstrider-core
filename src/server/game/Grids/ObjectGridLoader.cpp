@@ -145,18 +145,18 @@ void LoadHelper(CellGuidSet const& guid_set, CellCoord &cell, GridRefManager<Cre
     }
 }
 
-void LoadHelper(CellGuidSet const& guid_set, CellCoord &cell, GridRefManager<GameObject> &m, uint32 &count, Map* map)
+void LoadHelper(CellGuidSet const& spawnId_set, CellCoord &cell, GridRefManager<GameObject> &m, uint32 &count, Map* map)
 {
     Battleground* bg = map->IsBattleground() ? ((BattlegroundMap*)map)->GetBG() : nullptr;
 
-    for (auto guid : guid_set)
+    for (auto spawnId : spawnId_set)
     {
         // Don't spawn at all if there's a respawn time
-        if (map->GetGORespawnTime(guid))
+        if (map->GetGORespawnTime(spawnId))
             continue;
 
-        GameObjectData const* godata = sObjectMgr->GetGameObjectData(guid);
-        DEBUG_ASSERT(godata, "Tried to load gameobject with spawnId %u, but no such object exists.", guid);
+        GameObjectData const* godata = sObjectMgr->GetGameObjectData(spawnId);
+        DEBUG_ASSERT(godata, "Tried to load gameobject with spawnId %u, but no such object exists.", spawnId);
         if (!godata)
             continue;
         if (!(godata->spawnGroupData->flags & SPAWNGROUP_FLAG_SYSTEM))
@@ -164,24 +164,22 @@ void LoadHelper(CellGuidSet const& guid_set, CellCoord &cell, GridRefManager<Gam
                 continue;
       
         GameObject* obj = sObjectMgr->CreateGameObject(godata->id); //create a Transport instead of needed
-        if (!obj->LoadFromDB(guid, map, false, false))
+        if (!obj->LoadFromDB(spawnId, map, false, false))
         {
             delete obj;
             continue;
         }
 
-
         if (bg)
         {
             bool addedToMap = bg->OnObjectDBLoad(obj);
             if (addedToMap)
-                break;
+                continue;
         }
 
         AddObjectHelper(cell, m, count, map, obj);
     }
 }
-
 
 void ObjectGridLoader::Visit(GameObjectMapType &m)
 {

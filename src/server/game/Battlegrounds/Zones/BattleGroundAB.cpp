@@ -297,6 +297,11 @@ void BattlegroundAB::_CreateBanner(uint8 node, uint8 type, uint8 teamIndex)
         break;
     }
 
+    // cause the node-type is in the generic form
+    // please see in the headerfile for the ids
+    if (type != BG_AB_NODE_TYPE_NEUTRAL)
+        type += teamIndex;
+
     SpawnEvent(node, type, true, true, delay);
 }
 
