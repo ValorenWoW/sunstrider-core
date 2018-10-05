@@ -2304,34 +2304,10 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         void SendMovieStart(uint32 MovieId) const;
 
         // Anti Undermap
-        void SaveNoUndermapPosition(float x, float y, float z)
-        {
-            _lastSafeX = x;
-            _lastSafeY = y;
-            _lastSafeZ = z;
-            _undermapPosValid = true;
-        }
+        void SaveSafePosition(Position pos);
+        bool UndermapRecall();
 
-        bool UndermapRecall()
-        {
-            if (!_undermapPosValid || IsBeingTeleported())
-                return false;
-
-            if (GetDistance2d(_lastSafeX, _lastSafeY) > 100.0f)
-            {
-                _undermapPosValid = false;
-                return false;
-            }
-
-            NearTeleportTo(_lastSafeX, _lastSafeY, _lastSafeZ + 1.5f, GetOrientation(), TELE_TO_NOT_LEAVE_COMBAT | TELE_TO_NOT_UNSUMMON_PET);
-            _undermapPosValid = false;
-            return true;
-        }
-
-        float _lastSafeX;
-        float _lastSafeY;
-        float _lastSafeZ;
-        bool _undermapPosValid;
+        Optional<Position> _lastSafePosition;
 
         /*********************************************************/
         /***                 INSTANCE SYSTEM                   ***/

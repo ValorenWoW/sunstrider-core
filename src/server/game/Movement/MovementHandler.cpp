@@ -474,42 +474,29 @@ void WorldSession::HandleMovementOpcodes(WorldPacket& recvData)
             plrMover->SetHasMovedInUpdate(true);
 
         // Anti Undermap
-        float curPlayerHeight = plrMover->GetMap()->GetHeight(plrMover->GetPositionX(), plrMover->GetPositionY(), plrMover->GetPositionZ(), true);
-        float curMapHeight = plrMover->GetMap()->GetGridMapHeight(plrMover->GetPositionX(), plrMover->GetPositionY());
-        if (curPlayerHeight < curMapHeight) // If player is under map..
+        if (movementInfo.pos.GetPositionZ() < plrMover->GetMap()->GetMinHeight(movementInfo.pos.GetPositionX(), movementInfo.pos.GetPositionY()))
         {
-            plrMover->UndermapRecall(); // Port player back to last safe position
-        }
-        else if (plrMover->CanFreeMove() && !movementInfo.HasMovementFlag(MOVEMENTFLAG_JUMPING_OR_FALLING)) // If player is able to move and not falling or jumping..
-        {
-            plrMover->SaveNoUndermapPosition(movementInfo.pos.GetPositionX(), movementInfo.pos.GetPositionY(), movementInfo.pos.GetPositionZ() + 1.5f); // Save current position for UndermapRecall()
-        }
-
-        // Teleportation to nearest graveyard
-        if (movementInfo.pos.GetPositionZ() < -500.0f)
-        {
-            if (plrMover->IsAlive()) // Still alive while falling
+            // Is there any ground existing? If there is a ground at this position, we very probably fell undermap, try to recover player.
+            // Else, just kill him
+            bool hasGround = (plrMover->GetMap()->GetGridMapHeight(movementInfo.pos.GetPositionX(), movementInfo.pos.GetPositionY()) != INVALID_HEIGHT);
+            if(hasGround)
+                plrMover->UndermapRecall(); // Port player back to last safe position
+            else
             {
-                if (plrMover->InBattleground())
+                plrMover->SetFlag(PLAYER_FLAGS, PLAYER_FLAGS_IS_OUT_OF_BOUNDS);
+                if (plrMover->IsAlive()) // Still alive while falling
                 {
                     plrMover->EnvironmentalDamage(DAMAGE_FALL_TO_VOID, plrMover->GetHealth());
-                }
-                else
-                {
-                    plrMover->EnvironmentalDamage(DAMAGE_FALL_TO_VOID, plrMover->GetHealth() / 2);
-                }
-
-                if (!plrMover->IsAlive())
-                {
                     // Change the death state to CORPSE to prevent the death timer from
                     // Starting in the next player update
                     plrMover->KillPlayer();
                     plrMover->BuildPlayerRepop();
                 }
             }
-
-            // Cancel the death timer here if started
-            plrMover->RepopAtGraveyard();
+        }
+        else if (plrMover->CanFreeMove() && !movementInfo.HasMovementFlag(MOVEMENTFLAG_JUMPING_OR_FALLING)) // If player is able to move and not falling or jumping..
+        {
+            plrMover->SaveSafePosition(movementInfo.pos); // Save current position for UndermapRecall()
         }
     }
 
