@@ -474,12 +474,13 @@ void WorldSession::HandleMovementOpcodes(WorldPacket& recvData)
             plrMover->SetHasMovedInUpdate(true);
 
         // Anti Undermap
-        if (movementInfo.pos.GetPositionZ() < plrMover->GetMap()->GetMinHeight(movementInfo.pos.GetPositionX(), movementInfo.pos.GetPositionY()))
+        float minHeight = plrMover->GetMap()->GetMinHeight(movementInfo.pos.GetPositionX(), movementInfo.pos.GetPositionY());
+        if (movementInfo.pos.GetPositionZ() < minHeight)
         {
-            // Is there any ground existing? If there is a ground at this position, we very probably fell undermap, try to recover player.
+            // Is there any ground existing above min height? If there is a ground at this position, we very probably fell undermap, try to recover player.
             // Else, just kill him
-            bool hasGround = (plrMover->GetMap()->GetGridMapHeight(movementInfo.pos.GetPositionX(), movementInfo.pos.GetPositionY()) != INVALID_HEIGHT);
-            if(hasGround)
+            float gridMapHeight = plrMover->GetMap()->GetGridMapHeight(movementInfo.pos.GetPositionX(), movementInfo.pos.GetPositionY());
+            if(gridMapHeight > minHeight)
                 plrMover->UndermapRecall(); // Port player back to last safe position
             else
             {
@@ -490,7 +491,6 @@ void WorldSession::HandleMovementOpcodes(WorldPacket& recvData)
                     // Change the death state to CORPSE to prevent the death timer from
                     // Starting in the next player update
                     plrMover->KillPlayer();
-                    plrMover->BuildPlayerRepop();
                 }
             }
         }
