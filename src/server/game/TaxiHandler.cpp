@@ -188,13 +188,8 @@ void WorldSession::HandleMoveSplineDoneOpcode(WorldPacket& recvData)
 {
     //TC_LOG_TRACE("network", "WORLD: Received CMSG_MOVE_SPLINE_DONE");
 
-#ifdef LICH_KING
-    ObjectGuid guid; // used only for proper packet read
-    recvData.readPackGUID(guid);
-#endif
-
     MovementInfo movementInfo;                              // used only for proper packet read
-    ReadMovementInfo(recvData, &movementInfo);
+    movementInfo.FillContentFromPacket(&recvData, true);
 
     recvData.read_skip<uint32>();                          // spline id
 

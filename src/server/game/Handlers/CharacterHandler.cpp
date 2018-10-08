@@ -641,6 +641,8 @@ void WorldSession::_HandlePlayerLogin(Player* pCurrChar, LoginQueryHolder* holde
 
     pCurrChar->SendDungeonDifficulty(false);
 
+    pCurrChar->InsertIntoClientControlSet(pCurrChar->GetGUID()); // init the client control set: for now, the player's client can only control the player himself.
+
     WorldPacket data(SMSG_LOGIN_VERIFY_WORLD, 20);
     data << pCurrChar->GetMapId();
     data << pCurrChar->GetPositionX();
@@ -834,10 +836,6 @@ void WorldSession::_HandlePlayerLogin(Player* pCurrChar, LoginQueryHolder* holde
 
     // Place character in world (and load zone) before some object loading
     pCurrChar->LoadCorpse(holder->GetPreparedResult(PLAYER_LOGIN_QUERY_LOAD_CORPSE_LOCATION));
-
-    // setting Ghost+speed if dead
-    if (pCurrChar->m_deathState == DEAD)
-        pCurrChar->SetMovement(MOVE_WATER_WALK);
 
     pCurrChar->ContinueTaxiFlight();
 

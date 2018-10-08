@@ -403,6 +403,17 @@ Anticheat.Movement.Warn = true
 Anticheat.Movement.Warn.Cooldown = 120
 
 #
+#    Anticheat.Movement.PendingMoveChangesTimeoutTime
+#        Description: Time each client has to acknowledge a movement change until they are kicked.
+#        Note:        A lower time will give cheaters less advantage when using a very specific
+#                     type of hack. However, the cost is that innocent but laggy players might
+#                     sometimes get kicked.
+#        Default:     5000 (5 seconds)
+#
+
+Anticheat.Movement.PendingMoveChangesTimeoutTime = 5000
+
+#
 ###################################################################################################################
 # SERVER SETTINGS
 #

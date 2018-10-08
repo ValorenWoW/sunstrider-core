@@ -454,6 +454,12 @@ bool WorldSession::Update(uint32 diff, PacketFilter& updater)
 
     _recvQueue.readd(requeuePackets.begin(), requeuePackets.end());
 
+    if (_player && _player->IsRepopPending() && !_player->HasPendingMovementChange())
+        _player->RepopAtGraveyard();
+
+    if (_player && _player->IsHasDelayedTeleport() && _player->IsAlive())
+        _player->TeleportTo(_player->m_teleport_dest, _player->m_teleport_options);
+
     if (m_Socket && m_Socket->IsOpen() && _warden)
         _warden->Update();
 
@@ -1619,186 +1625,6 @@ void WorldSession::HandleSpellClick(WorldPacket& recvData)
         return;
 
     unit->HandleSpellClick(_player);
-}
-
-void WorldSession::ReadMovementInfo(WorldPacket &data, MovementInfo* mi)
-{
-    data >> mi->flags;
-    data >> mi->flags2;
-    data >> mi->time;
-    data >> mi->pos.PositionXYZOStream();
-
-    if (mi->HasMovementFlag(MOVEMENTFLAG_ONTRANSPORT))
-    {
-#ifdef LICH_KING
-        data.readPackGUID(mi->transport.guid);
-
-        data >> mi->transport.pos.PositionXYZOStream();
-        data >> mi->transport.time;
-        data >> mi->transport.seat;
-
-        if (mi->HasExtraMovementFlag(MOVEMENTFLAG2_INTERPOLATED_MOVEMENT))
-            data >> mi->transport.time2;
-#else
-        data >> mi->transport.guid;
-        data >> mi->transport.pos.PositionXYZOStream();
-        data >> mi->transport.time;
-#endif
-    }
-
-    if (mi->HasMovementFlag(MovementFlags(MOVEMENTFLAG_SWIMMING | MOVEMENTFLAG_PLAYER_FLYING))
-#ifdef LICH_KING
-        || (mi->HasExtraMovementFlag(MOVEMENTFLAG2_ALWAYS_ALLOW_PITCHING))
-#endif
-        )
-        data >> mi->pitch;
-
-    data >> mi->fallTime;
-
-    if (mi->HasMovementFlag(MOVEMENTFLAG_JUMPING_OR_FALLING))
-    {
-        data >> mi->jump.zspeed;
-        data >> mi->jump.sinAngle;
-        data >> mi->jump.cosAngle;
-        data >> mi->jump.xyspeed;
-    }
-
-    if (mi->HasMovementFlag(MOVEMENTFLAG_SPLINE_ELEVATION))
-        data >> mi->splineElevation;
-
-    //! Anti-cheat checks. Please keep them in seperate if() blocks to maintain a clear overview.
-    //! Might be subject to latency, so just remove improper flags.
-#ifdef TRINITY_DEBUG
-#define REMOVE_VIOLATING_FLAGS(check, maskToRemove) \
-    { \
-        if (check) \
-        { \
-            TC_LOG_DEBUG("entities.unit", "WorldSession::ReadMovementInfo: Violation of MovementFlags found (%s). " \
-                "MovementFlags: %u, MovementFlags2: %u for player GUID: %u. Mask %u will be removed.", \
-                STRINGIZE(check), mi->GetMovementFlags(), mi->GetExtraMovementFlags(), GetPlayer()->GetGUID().GetCounter(), maskToRemove); \
-            mi->RemoveMovementFlag((maskToRemove)); \
-        } \
-    }
-#else
-#define REMOVE_VIOLATING_FLAGS(check, maskToRemove) \
-        if (check) \
-            mi->RemoveMovementFlag((maskToRemove));
-#endif
-
-
-    /*! This must be a packet spoofing attempt. MOVEMENTFLAG_ROOT sent from the client is not valid
-    in conjunction with any of the moving movement flags such as MOVEMENTFLAG_FORWARD.
-    It will freeze clients that receive this player's movement info.
-    */
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_ROOT),
-        MOVEMENTFLAG_ROOT);
-
-    //! Cannot hover without SPELL_AURA_HOVER
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_HOVER) && !GetPlayer()->m_unitMovedByMe->HasAuraType(SPELL_AURA_HOVER), // sunwell: added m_unitMovedByMe
-        MOVEMENTFLAG_HOVER);
-
-    //! Cannot ascend and descend at the same time
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_ASCENDING) && mi->HasMovementFlag(MOVEMENTFLAG_DESCENDING),
-        MOVEMENTFLAG_ASCENDING | MOVEMENTFLAG_DESCENDING);
-
-    //! Cannot move left and right at the same time
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_LEFT) && mi->HasMovementFlag(MOVEMENTFLAG_RIGHT),
-        MOVEMENTFLAG_LEFT | MOVEMENTFLAG_RIGHT);
-
-    //! Cannot strafe left and right at the same time
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_STRAFE_LEFT) && mi->HasMovementFlag(MOVEMENTFLAG_STRAFE_RIGHT),
-        MOVEMENTFLAG_STRAFE_LEFT | MOVEMENTFLAG_STRAFE_RIGHT);
-
-    //! Cannot pitch up and down at the same time
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_PITCH_UP) && mi->HasMovementFlag(MOVEMENTFLAG_PITCH_DOWN),
-        MOVEMENTFLAG_PITCH_UP | MOVEMENTFLAG_PITCH_DOWN);
-
-    //! Cannot move forwards and backwards at the same time
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_FORWARD) && mi->HasMovementFlag(MOVEMENTFLAG_BACKWARD),
-        MOVEMENTFLAG_FORWARD | MOVEMENTFLAG_BACKWARD);
-
-    //! Cannot walk on water without SPELL_AURA_WATER_WALK
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_WATERWALKING) && !GetPlayer()->m_unitMovedByMe->HasAuraType(SPELL_AURA_WATER_WALK) && !GetPlayer()->m_unitMovedByMe->HasAuraType(SPELL_AURA_GHOST), // sunwell: added m_unitMovedByMe
-        MOVEMENTFLAG_WATERWALKING);
-
-    //! Cannot feather fall without SPELL_AURA_FEATHER_FALL
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_FALLING_SLOW) && !GetPlayer()->m_unitMovedByMe->HasAuraType(SPELL_AURA_FEATHER_FALL), // sunwell: added m_unitMovedByMe
-        MOVEMENTFLAG_FALLING_SLOW);
-
-    /*! Cannot fly if no fly auras present. Exception is being a GM.
-    Note that we check for account level instead of Player::IsGameMaster() because in some
-    situations it may be feasable to use .gm fly on as a GM without having .gm on,
-    e.g. aerial combat.
-    */
-
-    // sunwell: remade this condition
-    bool canFly = GetPlayer()->m_unitMovedByMe->HasAuraType(SPELL_AURA_FLY) || GetPlayer()->m_unitMovedByMe->HasAuraType(SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED) ||
-        (GetPlayer()->m_unitMovedByMe->GetTypeId() == TYPEID_UNIT && GetPlayer()->m_unitMovedByMe->ToCreature()->CanFly()) || GetSecurity() > SEC_PLAYER;
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_PLAYER_FLYING | MOVEMENTFLAG_CAN_FLY) && !canFly,
-        MOVEMENTFLAG_PLAYER_FLYING | MOVEMENTFLAG_CAN_FLY);
-
-    // sunwell: added condition for disable gravity
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY) && (GetPlayer()->m_unitMovedByMe->GetTypeId() == TYPEID_PLAYER || !canFly),
-        MOVEMENTFLAG_DISABLE_GRAVITY);
-
-    //! Cannot fly and fall at the same time
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_CAN_FLY | MOVEMENTFLAG_DISABLE_GRAVITY) && mi->HasMovementFlag(MOVEMENTFLAG_JUMPING_OR_FALLING),
-        MOVEMENTFLAG_JUMPING_OR_FALLING);
-
-    // sunwell: Spline enabled flag should be never sent by client, its internal movementflag
-    REMOVE_VIOLATING_FLAGS(!GetPlayer()->m_unitMovedByMe->m_movementInfo.HasMovementFlag(MOVEMENTFLAG_SPLINE_ENABLED),
-        MOVEMENTFLAG_SPLINE_ENABLED);
-
-#undef REMOVE_VIOLATING_FLAGS
-}
-
-void WorldSession::WriteMovementInfo(WorldPacket* data, MovementInfo* mi)
-{
-#ifdef LICH_KING
-    data->appendPackGUID(mi->guid);
-#endif
-    *data << mi->flags;
-    *data << mi->flags2;
-    *data << mi->time;
-    *data << mi->pos.PositionXYZOStream();
-
-    if (mi->HasMovementFlag(MOVEMENTFLAG_ONTRANSPORT))
-    {
-#ifdef LICH_KING
-        data->appendPackGUID(mi->transport.guid);
-
-        *data << mi->transport.pos.PositionXYZOStream();
-        *data << mi->transport.time;
-        *data << mi->transport.seat;
-
-        if (mi->HasExtraMovementFlag(MOVEMENTFLAG2_INTERPOLATED_MOVEMENT))
-            *data << mi->transport.time2;
-#else
-        *data << mi->transport.guid;
-        *data << mi->transport.pos.PositionXYZOStream();
-        *data << mi->transport.time;
-#endif
-    }
-
-    if (mi->HasMovementFlag(MovementFlags(MOVEMENTFLAG_SWIMMING | MOVEMENTFLAG_PLAYER_FLYING))
-#ifdef LICH_KING
-        || mi->HasExtraMovementFlag(MOVEMENTFLAG2_ALWAYS_ALLOW_PITCHING)
-#endif
-        )
-        *data << mi->pitch;
-
-    *data << mi->fallTime;
-
-    if (mi->HasMovementFlag(MOVEMENTFLAG_JUMPING_OR_FALLING))
-    {
-        *data << mi->jump.zspeed;
-        *data << mi->jump.sinAngle;
-        *data << mi->jump.cosAngle;
-        *data << mi->jump.xyspeed;
-    }
-
-    if (mi->HasMovementFlag(MOVEMENTFLAG_SPLINE_ELEVATION))
-        *data << mi->splineElevation;
 }
 
 #ifdef PLAYERBOT

@@ -20,6 +20,7 @@
 
 #include "Common.h"
 #include <memory>
+#include <queue>
 
 enum UnitMoveType : uint8
 {
@@ -39,6 +40,61 @@ enum UnitMoveType : uint8
 #define VISUAL_WAYPOINT 1
 // assume it is 25 yard per 0.6 second
 #define SPEED_CHARGE    42.0f
+
+TC_GAME_API extern float baseMoveSpeed[MAX_MOVE_TYPE];
+//sun: removed playerBaseMoveSpeed, use baseMoveSpeed instead. Speeds are the same, this was just a way to handle the retired "Rate.MoveSpeed" config
+
+#define MOVEMENT_PACKET_TIME_DELAY 0
+
+enum MovementChangeType
+{
+    INVALID,
+
+    ROOT,
+    WATER_WALK,
+    SET_HOVER,
+    SET_CAN_FLY,
+#ifdef LICH_KING
+    SET_CAN_TRANSITION_BETWEEN_SWIM_AND_FLY,
+#endif
+    FEATHER_FALL,
+    GRAVITY_DISABLE,
+
+    SPEED_CHANGE_WALK,
+    SPEED_CHANGE_RUN,
+    SPEED_CHANGE_RUN_BACK,
+    SPEED_CHANGE_SWIM,
+    SPEED_CHANGE_SWIM_BACK,
+    RATE_CHANGE_TURN,
+    SPEED_CHANGE_FLIGHT_SPEED,
+    SPEED_CHANGE_FLIGHT_BACK_SPEED,
+#ifdef LICH_KING
+    RATE_CHANGE_PITCH,
+    SET_COLLISION_HGT,
+#endif
+
+    TELEPORT,
+    KNOCK_BACK
+};
+
+struct PlayerMovementPendingChange
+{
+    uint32 movementCounter = 0;
+    MovementChangeType movementChangeType = INVALID;
+    uint32 time = 0;
+
+    float newValue = 0.0f; // used if speed or height change
+    bool apply = false; // used if movement flag change
+    struct KnockbackInfo
+    {
+        float vcos = 0.0f;
+        float vsin = 0.0f;
+        float speedXY = 0.0f;
+        float speedZ = 0.0f;
+    } knockbackInfo; // used if knockback
+
+    PlayerMovementPendingChange();
+};
 
 // values 0 ... MAX_DB_MOTION_TYPE-1 used in DB
 enum MovementGeneratorType : uint8

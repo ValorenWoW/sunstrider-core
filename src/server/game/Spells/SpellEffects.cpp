@@ -6774,9 +6774,8 @@ void Spell::EffectKnockBack(uint32 i)
     if (unitTarget->IsNonMeleeSpellCast(true))
         unitTarget->InterruptNonMeleeSpells(true);
 
-    float ratio = 0.1f;
-    float speedxy = float(m_spellInfo->Effects[i].MiscValue) * ratio;
-    float speedz = float(damage) * ratio;
+    float speedxy = float(m_spellInfo->Effects[i].MiscValue) / 10.0f;
+    float speedz = float(damage) / 10.0f;
     if (speedxy < 0.1f && speedz < 0.1f)
         return;
 
@@ -6788,7 +6787,7 @@ void Spell::EffectKnockBack(uint32 i)
             destTarget->GetPosition(x, y);
         }
         else
-            return;
+            return; // log into warn a message for this case?
     }
     else //if (m_spellInfo->Effects[i].Effect == SPELL_EFFECT_KNOCK_BACK)
     {

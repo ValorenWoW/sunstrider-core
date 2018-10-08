@@ -436,14 +436,6 @@ struct LookingForGroup
     std::string comment;
 };
 
-enum PlayerMovementType
-{
-    MOVE_ROOT       = 1,
-    MOVE_UNROOT     = 2,
-    MOVE_WATER_WALK = 3,
-    MOVE_LAND_WALK  = 4
-};
-
 enum DrunkenState
 {
     DRUNKEN_SOBER   = 0,
@@ -1921,8 +1913,6 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
 		void SendMessageToSetInRange(WorldPacket const* data, float dist, bool self, bool includeMargin, bool own_team_only, Player const* skipped_rcvr = nullptr);
         void SendMessageToSet(WorldPacket const* data, Player* skipped_rcvr) override;
 
-        void SendTeleportAckPacket();
-
         /**
         * Deletes a character from the database
         *
@@ -1950,6 +1940,8 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         void ResurrectPlayer(float restore_percent, bool applySickness = false);
         void BuildPlayerRepop();
         void RepopAtGraveyard();
+        void SetIsRepopPending(bool pending) { m_isRepopPending = pending; }
+        bool IsRepopPending() const { return m_isRepopPending; }
 
         void DurabilityLossAll(double percent, bool inventory);
         void DurabilityLoss(Item* item, double percent);
@@ -1966,8 +1958,6 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
             StopMirrorTimer(BREATH_TIMER);
             StopMirrorTimer(FIRE_TIMER);
         }
-
-        void SetMovement(PlayerMovementType pType);
 
         void JoinedChannel(Channel *c);
         void LeftChannel(Channel *c);
@@ -2191,11 +2181,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         //only for TC compat
         bool CanFlyInZone(uint32 mapid, uint32 zone, SpellInfo const* bySpell) const { return true; }
 
-        bool SetDisableGravity(bool disable, bool packetOnly /* = false */) override;
-        bool SetFlying(bool apply, bool packetOnly = false) override;
-        bool SetWaterWalking(bool apply, bool packetOnly = false) override;
-        bool SetFeatherFall(bool apply, bool packetOnly = false) override;
-        bool SetHover(bool enable, bool packetOnly = false) override;
+        void SetFlying(bool apply) override;
 
         bool CanFly() const override { return m_movementInfo.HasMovementFlag(MOVEMENTFLAG_CAN_FLY); }
         bool CanWalk() const override { return true; }
@@ -2217,6 +2203,15 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         //Set target as moved by this player
         void SetMovedUnit(Unit* target);
 
+        void InsertIntoClientControlSet(ObjectGuid guid);
+        void RemoveFromClientControlSet(ObjectGuid guid);
+        bool IsInClientControlSet(ObjectGuid guid);
+        bool m_pendingNewAllowedMover;
+    private:
+        // describe all units that this unit has client control over. Example, a player on a vehicle has client control over himself and the vehicle at the same time.
+        GuidSet m_allowedClientControl;
+
+    public:
 		void SetSeer(WorldObject* target) { m_seer = target; }
 		void SetViewpoint(WorldObject* target, bool apply);
 		WorldObject* GetViewpoint() const;
@@ -2506,6 +2501,9 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         uint32 m_DelayedOperations;
         bool m_bCanDelayTeleport;
         bool m_bHasDelayedTeleport;
+
+        // Used to resurect a dead player into a ghost by 2 non consecutive steps
+        bool m_isRepopPending;
 
         /*********************************************************/
         /***                  HONOR SYSTEM                     ***/
