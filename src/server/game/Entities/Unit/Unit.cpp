@@ -10371,6 +10371,10 @@ void Unit::RemoveCharmedBy(Unit* charmer)
         else
             ScheduleAIChange();
     }
+
+    //sun: reset walk state
+    if (GetTypeId() == TYPEID_PLAYER && charmer->GetTypeId() == TYPEID_PLAYER)
+        SetWalk(false);
 }
 
 void Unit::RestoreFaction()
