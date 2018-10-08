@@ -372,8 +372,6 @@ Player::Player(WorldSession *session) :
 
     _cinematicMgr = new CinematicMgr(this);
     m_reputationMgr = new ReputationMgr(this);
-
-    m_pendingNewAllowedMover = false;
 }
 
 Player::~Player()
@@ -21481,13 +21479,14 @@ void Player::SetClientControl(Unit* target, uint8 allowMove)
     data << uint8(allowMove);
     SendDirectMessage(&data);
 
+    //sun: Client will not update active mover until we set his viewpoint:
     if (this != target)
         SetViewpoint(target, allowMove);
 
-    if (allowMove)
+    //sun: Do NOT set moved unit yet, we need to wait for client confirmations with CMSG_SET_ACTIVE_MOVER
     {
-        SetMovedUnit(target);
-        m_pendingNewAllowedMover = true;
+        InsertIntoClientControlSet(target->GetGUID());
+        //it will later be removed when client release active mover
     }
 }
 
@@ -22746,8 +22745,12 @@ void Player::SetMovedUnit(Unit* target)
     //also notify for ourselves
     GetSession()->anticheat->OnPlayerMoverChanged(m_unitMovedByMe, target);
 
+    //Reset mover for the last moved unit
     m_unitMovedByMe->m_playerMovingMe = nullptr;
+    if (m_unitMovedByMe->GetTypeId() == TYPEID_PLAYER) //sun: don't want to leave this nullptr, it should go back to `this` for players
+        m_unitMovedByMe->m_playerMovingMe = m_unitMovedByMe->ToPlayer();
 
+    //Set current mover for new target
     m_unitMovedByMe = target;
     m_unitMovedByMe->m_playerMovingMe = this;
 }

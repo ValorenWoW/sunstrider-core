@@ -26,13 +26,13 @@
 /*
 Sun:
 Changes from chaosdib Movement implementation:
-- Added HasPendingMovementChange
+- Added HasPendingMovementChange opcode validation... not sure this is still useful, this was because of a previous change I rollbacked.
+- Delay SetMover to CMSG_SET_ACTIVE_MOVER, instead of setting it at SMSG_CLIENT_CONTROL_UPDATE. This is needed to properly handle
+  incoming move packets on the right unit (especially needed on TBC since client does not send the moved unit guid)
 - Fixed SetLastMoveServerTimestamp time
-- Removed all IsInClientControlSet checks. If client has lost control, it should still be able to receive speed changes and ack them.
-  For example when receiving a fear, in the current implementation the client respond the speed ack after the mover change, so it's not in control anymore.
-  We could either make sure all calls in the code are in the right order... or change this check.
-  It is now replaced by better enforcement that the client is responding to a speed change we asked
-- We clear pending move changes when changing maps. No reason to keep them + time is different on each map. Can this cause problems though?
+- Some general fixes related to SetMover, not directly related to this PR but were needed
+- We clear pending move changes when changing maps. No reason to keep them + time is different on each map
+- We clear pending move changes on CMSG_MOVE_NOT_ACTIVE_MOVER. See comment inside HandleMoveNotActiveMover
 */
 
 void WorldSession::HandleMoveWorldportAckOpcode(WorldPacket & /*recvData*/)
@@ -595,13 +595,12 @@ void WorldSession::HandleForceSpeedChangeAck(WorldPacket &recvData)
     recvData >> guid;
 #endif
 
-    /*See top file comment
+    // make sure this client is allowed to control the unit which guid is provided
     if (!_player->IsInClientControlSet(guid))
     {
         recvData.rfinish();                   // prevent warnings spam
         return;
     }
-    */
 
     Unit* mover = ObjectAccessor::GetUnit(*_player, guid);
 
@@ -699,14 +698,13 @@ void WorldSession::HandleCollisionHeightChangeAck(WorldPacket &recvData)
     movementInfo.FillContentFromPacket(&recvData, false);
     recvData >> heightReceived;
 
-    /*See top file comment
     // make sure this client is allowed to control the unit which guid is provided
     if (!_player->IsInClientControlSet(guid))
     {
         recvData.rfinish();                   // prevent warnings spam
         TC_LOG_ERROR("entities.unit", "WorldSession::HandleCollisionHeightChangeAck: The client doesn't have the permission to move this unit!");
         return;
-    }*/
+    }
 
     Unit* mover = ObjectAccessor::GetUnit(*_player, guid);
 
@@ -748,8 +746,15 @@ void WorldSession::HandleSetActiveMoverOpcode(WorldPacket &recvData)
     ObjectGuid guid;
     recvData >> guid; //Client started controlling this unit
 
-    _player->InsertIntoClientControlSet(guid);
-    _player->m_pendingNewAllowedMover = false;
+    // make sure this client is allowed to control the unit which guid is provided
+    if (!_player->IsInClientControlSet(guid))
+    {
+        TC_LOG_ERROR("entities.unit", "WorldSession::HandleSetActiveMoverOpcode: Client tried to activate mover on a unit he does not control");
+        return;
+    }
+
+    if (Unit* mover = ObjectAccessor::GetUnit(*_player, guid))
+        _player->SetMovedUnit(mover);
  }
 
 //CMSG_MOVE_NOT_ACTIVE_MOVER
@@ -760,6 +765,8 @@ void WorldSession::HandleMoveNotActiveMover(WorldPacket &recvData)
 
     MovementInfo movementInfo;
     movementInfo.FillContentFromPacket(&recvData, true);
+
+    _player->SetMovedUnit(_player);
 
     // make sure this client is allowed to control the unit which guid is provided
     if (!_player->IsInClientControlSet(movementInfo.guid))
@@ -774,10 +781,10 @@ void WorldSession::HandleMoveNotActiveMover(WorldPacket &recvData)
     mover->ValidateMovementInfo(&movementInfo);
     mover->UpdateMovementInfo(movementInfo);
 
-    if (!_player->m_pendingNewAllowedMover)
-        _player->RemoveFromClientControlSet(movementInfo.guid);
-
-    _player->m_pendingNewAllowedMover = false;
+    _player->RemoveFromClientControlSet(movementInfo.guid);
+    //sun: also clear pending changes, there may be more acks incoming from last controlled unit but we can ignore them now.
+    //(this is not only optional but needed because these acks will be denied and player will be kicked for not responding to changes)
+    _player->m_pendingMovementChanges.clear();
 }
 
 void WorldSession::HandleMountSpecialAnimOpcode(WorldPacket& /*recvData*/)
@@ -805,14 +812,13 @@ void WorldSession::HandleMoveKnockBackAck(WorldPacket& recvData)
     recvData >> movementCounter;
     movementInfo.FillContentFromPacket(&recvData, false);
 
-    /*See top file comment
     // make sure this client is allowed to control the unit which guid is provided
     if (!_player->IsInClientControlSet(guid))
     {
         recvData.rfinish();                   // prevent warnings spam
         TC_LOG_ERROR("entities.unit", "WorldSession::HandleMoveKnockBackAck: The client doesn't have the permission to move this unit!");
         return;
-    }*/
+    }
 
     Unit* mover = ObjectAccessor::GetUnit(*_player, guid);
 
@@ -877,14 +883,13 @@ void WorldSession::HandleMovementFlagChangeAck(WorldPacket& recvData)
     recvData >> movementCounter;
     movementInfo.FillContentFromPacket(&recvData);
 
-    /*See top file comment
     // make sure this client is allowed to control the unit which guid is provided
     if (!_player->IsInClientControlSet(guid))
     {
         recvData.rfinish();                   // prevent warnings spam
         TC_LOG_ERROR("entities.unit", "WorldSession::HandleMovementFlagChangeAck: The client doesn't have the permission to move this unit!");
         return;
-    }*/
+    }
 
     Unit* mover = ObjectAccessor::GetUnit(*_player, guid);
 
