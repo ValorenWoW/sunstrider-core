@@ -1064,32 +1064,35 @@ void WorldSession::HandleMovementFlagChangeToggleAck(WorldPacket& recvData)
 
 void WorldSession::HandleMoveTimeSkippedOpcode(WorldPacket& recvData)
 {
-    /*  WorldSession::Update(getMSTime());*/
     TC_LOG_DEBUG("network", "WORLD: Received CMSG_MOVE_TIME_SKIPPED");
 
     ObjectGuid guid;
+    uint32 timeSkipped;
 
 #ifdef LICH_KING
     recvData >> guid.ReadAsPacked();
 #else
     recvData >> guid;
 #endif
-    recvData.read_skip<uint32>();
-    /*
-    uint64 guid;
-    uint32 time_skipped;
-    recvData >> guid;
-    recvData >> time_skipped;
-    TC_LOG_DEBUG("network", "WORLD: CMSG_MOVE_TIME_SKIPPED");
+    recvData >> timeSkipped;
 
-    //// @todo
-    must be need use in Trinity
-    We substract server Lags to move time (AntiLags)
-    for exmaple
-    GetPlayer()->ModifyLastMoveTime(-int32(time_skipped));
-    */
+    // ignore updates not for us
+    if (guid != _player->GetGUID())
+        return;
+
+    // make sure this client is allowed to control the unit which guid is provided
+    if (!_player->IsInClientControlSet(guid))
+    {
+        recvData.rfinish();                   // prevent warnings spam
+        TC_LOG_ERROR("entities.unit", "WorldSession::HandleMoveTimeSkippedOpcode: The client doesn't have the permission to move this unit!");
+        return;
+    }
+
+    WorldPacket data(MSG_MOVE_TIME_SKIPPED, 16);
+    data << _player->GetPackGUID();
+    data << timeSkipped;
+    _player->SendMessageToSet(&data, false);
 }
-
 
 /*
 Handles CMSG_WORLD_TELEPORT. That packet is sent by the client when the user types a special build-in command restricted to GMs.
