@@ -47,6 +47,7 @@ class Unit;
 class SpellHistory;
 enum MovementGeneratorType : uint8;
 struct ChaseRange;
+class WorldSession;
 
 #define WORLD_TRIGGER   12999
 
@@ -794,6 +795,8 @@ struct SpellProcEntry;                                 // used only privately
 class TC_GAME_API Unit : public WorldObject
 {
     friend class WorldSession;
+    friend class PlayerMovementPendingChange;
+
     public:
         typedef std::set<Unit*> AttackerSet;
         typedef std::vector<Unit*> UnitVector;
@@ -1209,7 +1212,6 @@ class TC_GAME_API Unit : public WorldObject
 
         void UpdateSplineMovement(uint32 t_diff);
         void UpdateSplinePosition();
-        void CheckPendingMovementAcks();
         void DisableSpline();
 
         void ProcessPositionDataChanged(PositionFullTerrainStatus const& data, bool updateCreatureLiquid = false) override;
@@ -1294,14 +1296,12 @@ class TC_GAME_API Unit : public WorldObject
         CharmInfo* GetCharmInfo() { return m_charmInfo; }
         CharmInfo* InitCharmInfo();
         void       DeleteCharmInfo();
-        // returns the unit that this player IS CONTROLLING
-        Unit* GetUnitBeingMoved() const;
-        // returns the player that this player IS CONTROLLING
-        Player* GetPlayerBeingMoved() const;
+
         // returns the player that this unit is BEING CONTROLLED BY
-        Player* GetPlayerMovingMe() const { return m_playerMovingMe; }
+        WorldSession* GetPlayerMovingMe() const { return m_playerMovingMe; }
         // only set for direct client control (possess effects, vehicles and similar)
-        Player* m_playerMovingMe;
+        // Should always match WorldSession::_activeMover
+        WorldSession* m_playerMovingMe;
         // reflects direct client control (examples: a player MC another player or a creature (possess effects). a player takes control of a vehicle. etc...)
         bool IsMovedByPlayer() const { return m_playerMovingMe != nullptr; }
         SharedVisionList const& GetSharedVisionList() { return m_sharedVision; }
@@ -1549,8 +1549,6 @@ class TC_GAME_API Unit : public WorldObject
 
         virtual bool HasMainWeapon() const { return true; }
 
-        void SetMap(Map* map) override;
-
         bool IsWalking() const { return m_movementInfo.HasMovementFlag(MOVEMENTFLAG_WALKING); }
         virtual bool SetWalk(bool enable);
         virtual bool SetSwim(bool enable);
@@ -1632,18 +1630,6 @@ class TC_GAME_API Unit : public WorldObject
         // should only be used by packet handlers to validate and apply incoming MovementInfos from clients. Do not use internally to modify m_movementInfo
         void UpdateMovementInfo(MovementInfo movementInfo);
         void ValidateMovementInfo(MovementInfo* mi);
-
-        uint32 GetMovementCounterAndInc() { return m_movementCounter++; }
-        uint32 GetMovementCounter() const { return m_movementCounter; }
-        void SetLastMoveClientTimestamp(uint32 timestamp) { lastMoveClientTimestamp = timestamp; }
-        void SetLastMoveServerTimestamp(uint32 timestamp) { lastMoveServerTimestamp = timestamp; }
-        uint32 GetLastMoveClientTimestamp() const { return lastMoveClientTimestamp; }
-        uint32 GetLastMoveServerTimestamp() const { return lastMoveServerTimestamp; }
-        PlayerMovementPendingChange PopPendingMovementChange();
-        void PushPendingMovementChange(PlayerMovementPendingChange newChange);
-        bool HasPendingMovementChange() const { return !m_pendingMovementChanges.empty(); }
-        bool HasPendingMovementChange(uint16 opcode) const;
-        bool HasPendingMovementChange(MovementChangeType changeType) const;
 
         bool isMoving() const   { return m_movementInfo.HasMovementFlag(MOVEMENTFLAG_MASK_MOVING); }
         bool isTurning() const  { return m_movementInfo.HasMovementFlag(MOVEMENTFLAG_MASK_TURNING); }
@@ -1832,18 +1818,6 @@ class TC_GAME_API Unit : public WorldObject
         void SetFeared(bool apply);
         void SetConfused(bool apply);
         void SetStunned(bool apply);
-
-        /* Player Movement fields START*/
-        // Timestamp on client clock of the moment the most recently processed movement packet was SENT by the client
-        uint32 lastMoveClientTimestamp;
-        // Timestamp on server clock of the moment the most recently processed movement packet was RECEIVED from the client
-        uint32 lastMoveServerTimestamp;
-        // when a player controls this unit, and when change is made to this unit which requires an ack from the client to be acted (change of speed for example), this movementCounter is incremented
-        uint32 m_movementCounter;
-        std::deque<PlayerMovementPendingChange> m_pendingMovementChanges;
-        /* Player Movement fields END*/
-
-        uint32 m_rootTimes;
 
         void AddComboPointHolder(uint32 lowguid) { m_ComboPointHolders.insert(lowguid); }
         void RemoveComboPointHolder(uint32 lowguid) { m_ComboPointHolders.erase(lowguid); }

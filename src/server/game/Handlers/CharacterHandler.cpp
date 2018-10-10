@@ -641,8 +641,6 @@ void WorldSession::_HandlePlayerLogin(Player* pCurrChar, LoginQueryHolder* holde
 
     pCurrChar->SendDungeonDifficulty(false);
 
-    pCurrChar->InsertIntoClientControlSet(pCurrChar->GetGUID()); // init the client control set: for now, the player's client can only control the player himself.
-
     WorldPacket data(SMSG_LOGIN_VERIFY_WORLD, 20);
     data << pCurrChar->GetMapId();
     data << pCurrChar->GetPositionX();

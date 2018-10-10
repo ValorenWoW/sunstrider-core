@@ -220,8 +220,7 @@ Player::Player(WorldSession *session) :
     mSemaphoreTeleport_Near = false;
     mSemaphoreTeleport_Far = false;
 
-    m_unitMovedByMe = this;
-    m_playerMovingMe = this;
+    m_playerMovingMe = session;
 
     m_cinematic = 0;
     if (sWorld->getConfig(CONFIG_BETASERVER_ENABLED))
@@ -378,6 +377,9 @@ Player::~Player()
 {
     // it must be unloaded already in PlayerLogout and accessed only for loggined player
     //m_social = nullptr;
+
+    if (m_playerMovingMe)
+        m_playerMovingMe->ResetActiveMover(true);
 
     // Note: buy back item already deleted from DB when player was saved
     for(auto & m_item : m_items)
@@ -1850,7 +1852,7 @@ bool Player::TeleportTo(uint32 mapid, float x, float y, float z, float orientati
     }
     else
     {
-        if (HasPendingMovementChange())
+        if (GetSession()->HasPendingMovementChange())
         {
             SetDelayedTeleportFlag(true);
             SetSemaphoreTeleportFar(true);
@@ -1936,7 +1938,7 @@ bool Player::TeleportTo(uint32 mapid, float x, float y, float z, float orientati
 
             // removing some auras (example spell id 26656) can trigger movement changes. Using this block to ensure that
             // teleports are delayed as long as there are still pending movement changes.
-            if (HasPendingMovementChange())
+            if (GetSession()->HasPendingMovementChange())
             {
                 SetDelayedTeleportFlag(true);
                 SetSemaphoreTeleportFar(true);
@@ -1945,7 +1947,7 @@ bool Player::TeleportTo(uint32 mapid, float x, float y, float z, float orientati
                 m_teleport_options = options;
                 return true;
             }
-            ASSERT(!HasPendingMovementChange());
+            ASSERT(!GetSession()->HasPendingMovementChange());
 
             if (!GetSession()->PlayerLogout())
             {
@@ -19466,7 +19468,7 @@ bool Player::CanNeverSee(WorldObject const* obj) const
 bool Player::CanAlwaysSee(WorldObject const* obj) const
 {
     // Always can see self
-    if (m_unitMovedByMe == obj)
+    if (GetSession()->GetActiveMover() == obj)
         return true;
 
     if (ObjectGuid guid = GetGuidValue(PLAYER_FARSIGHT))
@@ -19802,7 +19804,7 @@ void Player::SendComboPoints()
     if (combotarget)
     {
         WorldPacket data;
-        if (m_unitMovedByMe != this)
+        if (GetSession()->GetActiveMover() != this)
             return; //no combo point from pet/charmed creatures
 
         data.Initialize(SMSG_UPDATE_COMBO_POINTS, combotarget->GetPackGUID().size() + 1);
@@ -19861,7 +19863,7 @@ void Player::SendInitialPacketsBeforeAddToMap()
     if(HasAuraType(SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED) || IsInFlight())
         AddUnitMovementFlag(MOVEMENTFLAG_PLAYER_FLYING);
 
-    SetMovedUnit(this);
+    GetSession()->InitActiveMover(this);
 }
 
 void Player::SendInitialPacketsAfterAddToMap()
@@ -21468,28 +21470,6 @@ void Player::RessurectUsingRequestData()
     SpawnCorpseBones();
 }
 
-void Player::SetClientControl(Unit* target, uint8 allowMove)
-{
-    // still affected by some aura that shouldn't allow control, only allow on last such aura to be removed
-    if (allowMove && target->HasUnitState(UNIT_STATE_CANT_CLIENT_CONTROL))
-        return;
-
-    WorldPacket data(SMSG_CLIENT_CONTROL_UPDATE, target->GetPackGUID().size()+1);
-    data << target->GetPackGUID();
-    data << uint8(allowMove);
-    SendDirectMessage(&data);
-
-    //sun: Client will not update active mover until we set his viewpoint:
-    if (this != target)
-        SetViewpoint(target, allowMove);
-
-    //sun: Do NOT set moved unit yet, we need to wait for client confirmations with CMSG_SET_ACTIVE_MOVER
-    {
-        InsertIntoClientControlSet(target->GetGUID());
-        //it will later be removed when client release active mover
-    }
-}
-
 void Player::UpdateZoneDependentAuras( uint32 newZone )
 {
     // remove new continent flight forms
@@ -22737,49 +22717,16 @@ void Player::SetFallInformation(uint32 time, float z)
     m_lastFallZ = z;
 }
 
-void Player::SetMovedUnit(Unit* target)
-{
-    //if target is a player, notify anticheat
-    if (Player* targetPlayer = target->ToPlayer())
-        targetPlayer->GetSession()->anticheat->OnPlayerMoverChanged(targetPlayer->m_unitMovedByMe->m_playerMovingMe, this);
-    //also notify for ourselves
-    GetSession()->anticheat->OnPlayerMoverChanged(m_unitMovedByMe, target);
-
-    //Reset mover for the last moved unit
-    m_unitMovedByMe->m_playerMovingMe = nullptr;
-    if (m_unitMovedByMe->GetTypeId() == TYPEID_PLAYER) //sun: don't want to leave this nullptr, it should go back to `this` for players
-        m_unitMovedByMe->m_playerMovingMe = m_unitMovedByMe->ToPlayer();
-
-    //Set current mover for new target
-    m_unitMovedByMe = target;
-    m_unitMovedByMe->m_playerMovingMe = this;
-}
-
-void Player::InsertIntoClientControlSet(ObjectGuid guid)
-{
-    m_allowedClientControl.insert(guid);
-}
-
-void Player::RemoveFromClientControlSet(ObjectGuid guid)
-{
-    m_allowedClientControl.erase(guid);
-}
-
-bool Player::IsInClientControlSet(ObjectGuid guid)
-{
-    return m_allowedClientControl.count(guid);;
-}
-
 void Player::SetViewpoint(WorldObject* target, bool apply)
 {
     if (apply)
     {
-        TC_LOG_DEBUG("maps", "Player::CreateViewpoint: Player '%s' (%s) creates seer (Entry: %u, TypeId: %u).",
+        TC_LOG_TRACE("entities.player", "Player::SetViewpoint: Player '%s' (%s) creates seer (Entry: %u, TypeId: %u).",
             GetName().c_str(), ObjectGuid(GetGUID()).ToString().c_str(), target->GetEntry(), target->GetTypeId());
 
         if (!AddGuidValue(PLAYER_FARSIGHT, target->GetGUID()))
         {
-            TC_LOG_FATAL("entities.player", "Player::CreateViewpoint: Player '%s' (%s) cannot add new viewpoint!", GetName().c_str(), ObjectGuid(GetGUID()).ToString().c_str());
+            TC_LOG_FATAL("entities.player", "Player::SetViewpoint: Player '%s' (%s) cannot add new viewpoint!", GetName().c_str(), ObjectGuid(GetGUID()).ToString().c_str());
             return;
         }
 
@@ -22797,11 +22744,11 @@ void Player::SetViewpoint(WorldObject* target, bool apply)
     }
     else
     {
-        TC_LOG_DEBUG("maps", "Player::CreateViewpoint: Player %s removed seer", GetName().c_str());
+        TC_LOG_TRACE("entities.player", "Player::SetViewpoint: Player %s removed seer", GetName().c_str());
 
         if (!RemoveGuidValue(PLAYER_FARSIGHT, target->GetGUID()))
         {
-            TC_LOG_FATAL("entities.player", "Player::CreateViewpoint: Player '%s' (%s) cannot remove current viewpoint!", GetName().c_str(), ObjectGuid(GetGUID()).ToString().c_str());
+            TC_LOG_FATAL("entities.player", "Player::SetViewpoint: Player '%s' (%s) cannot remove current viewpoint!", GetName().c_str(), ObjectGuid(GetGUID()).ToString().c_str());
             return;
         }
 

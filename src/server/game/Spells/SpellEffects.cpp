@@ -5946,7 +5946,8 @@ void Spell::EffectAddComboPoints(uint32 /*i*/)
     if (!player)
         return;
 
-    if (!player->m_playerMovingMe)
+    WorldSession* session = player->m_playerMovingMe;
+    if (!session)
         return;
 
     if (damage <= 0)
@@ -5955,11 +5956,11 @@ void Spell::EffectAddComboPoints(uint32 /*i*/)
     //HACK
     if (m_spellInfo->Id == 15250) 
     {
-        player->m_playerMovingMe->AddComboPoints(unitTarget, damage, true);
+        session->GetPlayer()->AddComboPoints(unitTarget, damage, true);
         return;
     }
 
-    player->m_playerMovingMe->AddComboPoints(unitTarget, damage, false);
+    session->GetPlayer()->AddComboPoints(unitTarget, damage, false);
 }
 
 void Spell::EffectDuel(uint32 i)

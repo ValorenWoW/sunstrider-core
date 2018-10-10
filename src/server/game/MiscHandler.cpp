@@ -495,16 +495,17 @@ void WorldSession::HandleSetSelectionOpcode( WorldPacket & recvData )
     }
 }
 
-void WorldSession::HandleStandStateChangeOpcode( WorldPacket & recvData )
+void WorldSession::HandleStandStateChangeOpcode(WorldPacket & recvData)
 {
-    if(!_player->m_unitMovedByMe->IsAlive())
+    //sun: affect moved unit and not player
+    if(!_activeMover || !_activeMover->IsAlive())
         return;
 
     uint8 animstate;
     recvData >> animstate;
 
-    if (_player->m_unitMovedByMe->GetStandState() != animstate)
-        _player->m_unitMovedByMe->SetStandState(animstate);
+    if (_activeMover->GetStandState() != animstate)
+        _activeMover->SetStandState(animstate);
 }
 
 void WorldSession::HandleBugOpcode( WorldPacket & recvData )
@@ -1214,6 +1215,7 @@ void WorldSession::HandleRealmSplitOpcode( WorldPacket & recvData )
 void WorldSession::HandleFarSightOpcode( WorldPacket & recvData )
 {
     //TC_LOG_DEBUG("network", "WORLD: CMSG_FAR_SIGHT");
+    //TODO: needs some cheating protection here...
 
     bool apply;
     recvData >> apply;
@@ -1254,7 +1256,8 @@ void WorldSession::HandleSetTitleOpcode( WorldPacket & recvData )
     GetPlayer()->SetUInt32Value(PLAYER_CHOSEN_TITLE, title);
 }
 
-void WorldSession::HandleTimeSyncResp( WorldPacket & recvData )
+// CMSG_TIME_SYNC_RESP
+void WorldSession::HandleTimeSyncResp(WorldPacket & recvData)
 {
     uint32 counter, clientTimestamp;
     recvData >> counter >> clientTimestamp;
@@ -1275,7 +1278,6 @@ void WorldSession::HandleTimeSyncResp( WorldPacket & recvData )
 
     // We want to estimate delay between our request and the client response. The client timestamp is the time he actually received it
     uint32 lagDelay = roundTripDuration / 2; // we assume that the request processing time is 0
-
     /*
     clockDelta = serverTime - clientTime
     where

@@ -1345,7 +1345,6 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         {
             return StoreItem( dest, pItem, update);
         }
-        Item* BankItem(uint16 pos, Item *pItem, bool update);
         void RemoveItem(uint8 bag, uint8 slot, bool update);
         void MoveItemFromInventory(uint8 bag, uint8 slot, bool update);
         // in trade, auction, guild bank, mail....
@@ -2172,8 +2171,6 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         /*********************************************************/
         
         void UpdateFallInformationIfNeed(MovementInfo const& minfo, uint16 opcode);
-		// only changed for direct client control (possess, vehicle etc.), not stuff you control using pet commands
-		Unit* m_unitMovedByMe;
         WorldObject* m_seer;
         void SetFallInformation(uint32 time, float z);
         void HandleFall(MovementInfo const& movementInfo);
@@ -2198,19 +2195,6 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         void GetArenaZoneCoord(bool secondary, uint32& map, float& x, float& y, float& z, float& o);
         void GetBetaZoneCoord(uint32& map, float& x, float& y, float& z, float& o);
         
-        void SetClientControl(Unit* target, uint8 allowMove);
-
-        //Set target as moved by this player
-        void SetMovedUnit(Unit* target);
-
-        void InsertIntoClientControlSet(ObjectGuid guid);
-        void RemoveFromClientControlSet(ObjectGuid guid);
-        bool IsInClientControlSet(ObjectGuid guid);
-        bool m_pendingNewAllowedMover;
-    private:
-        // describe all units that this unit has client control over. Example, a player on a vehicle has client control over himself and the vehicle at the same time.
-        GuidSet m_allowedClientControl;
-
     public:
 		void SetSeer(WorldObject* target) { m_seer = target; }
 		void SetViewpoint(WorldObject* target, bool apply);

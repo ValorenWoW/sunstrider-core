@@ -197,6 +197,9 @@ void WorldSession::HandleMoveSplineDoneOpcode(WorldPacket& recvData)
 
     recvData.read_skip<uint32>();                          // spline id
 
+    TC_LOG_TRACE("movement", "CMSG_MOVE_SPLINE_DONE: From player %s controlling unit %s",
+        _player->GetName().c_str(), _activeMover->GetName().c_str());
+
     // in taxi flight packet received in 2 case:
     // 1) end taxi path in far (multi-node) flight
     // 2) switch from one map to other in case multim-map taxi path

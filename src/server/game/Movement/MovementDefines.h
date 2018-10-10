@@ -44,8 +44,6 @@ enum UnitMoveType : uint8
 TC_GAME_API extern float baseMoveSpeed[MAX_MOVE_TYPE];
 //sun: removed playerBaseMoveSpeed, use baseMoveSpeed instead. Speeds are the same, this was just a way to handle the retired "Rate.MoveSpeed" config
 
-#define MOVEMENT_PACKET_TIME_DELAY 0
-
 enum MovementChangeType
 {
     INVALID,
@@ -56,9 +54,11 @@ enum MovementChangeType
     SET_CAN_FLY,
 #ifdef LICH_KING
     SET_CAN_TRANSITION_BETWEEN_SWIM_AND_FLY,
+    RATE_CHANGE_PITCH,
+    SET_COLLISION_HGT,
+    GRAVITY,
 #endif
     FEATHER_FALL,
-    GRAVITY_DISABLE,
 
     SPEED_CHANGE_WALK,
     SPEED_CHANGE_RUN,
@@ -68,19 +68,16 @@ enum MovementChangeType
     RATE_CHANGE_TURN,
     SPEED_CHANGE_FLIGHT_SPEED,
     SPEED_CHANGE_FLIGHT_BACK_SPEED,
-#ifdef LICH_KING
-    RATE_CHANGE_PITCH,
-    SET_COLLISION_HGT,
-#endif
 
     TELEPORT,
     KNOCK_BACK
 };
 
-struct PlayerMovementPendingChange
+class PlayerMovementPendingChange
 {
-    uint32 movementCounter = 0;
-    MovementChangeType movementChangeType = INVALID;
+public:
+    ObjectGuid guid;
+    MovementChangeType movementChangeType = INVALID; 
     uint32 time = 0;
 
     float newValue = 0.0f; // used if speed or height change
@@ -93,7 +90,14 @@ struct PlayerMovementPendingChange
         float speedZ = 0.0f;
     } knockbackInfo; // used if knockback
 
-    PlayerMovementPendingChange();
+    PlayerMovementPendingChange(uint32 time);
+
+    void Resolve(PlayerMovementPendingChange const& change, WorldSession* session, Unit* mover, MovementInfo& movementInfo);
+private:
+    void _HandleMoveKnockBackAck(WorldSession* session, Unit* mover, MovementInfo& movementInfo);
+    void _HandleMoveTeleportAck(WorldSession* session, Unit* mover, MovementInfo& movementInfo);
+    void _HandleMovementFlagChangeToggleAck(WorldSession* session, Unit* mover, MovementInfo& movementInfo);
+    void _HandleForceSpeedChangeAck(WorldSession* session, Unit* mover, MovementInfo& movementInfo);
 };
 
 // values 0 ... MAX_DB_MOTION_TYPE-1 used in DB

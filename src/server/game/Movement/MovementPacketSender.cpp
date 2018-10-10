@@ -1,19 +1,3 @@
-/*
- * Copyright (C) 2008-2017 TrinityCore <http://www.trinitycore.org/>
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the
- * Free Software Foundation; either version 2 of the License, or (at your
- * option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program. If not, see <http://www.gnu.org/licenses/>.
- */
 
 #include "MovementPacketSender.h"
 #include "Player.h"
@@ -23,20 +7,20 @@
 #ifdef LICH_KING
 void MovementPacketSender::SendHeightChangeToMover(Unit* unit, float newHeight)
 {
-    Player* mover = unit->GetPlayerMovingMe();
+    WorldSession* session = unit->GetPlayerMovingMe();
+    Player* mover = session ? session->GetPlayer() : nullptr;
     if (!mover)
     {
         TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendHeightChangeToMover: Incorrect use of the function. It was called on a unit controlled by the server!");
         return;
     }
 
-    uint32 mCounter = unit->GetMovementCounterAndInc();
     PlayerMovementPendingChange pendingChange;
-    pendingChange.movementCounter = mCounter;
+    pendingChange.guid = unit->GetGUID();
     pendingChange.movementChangeType = SET_COLLISION_HGT;
     pendingChange.newValue = newHeight;
 
-    unit->PushPendingMovementChange(pendingChange);
+    uint32 mCounter = unit->PushPendingMovementChange(pendingChange);
 
     WorldPacket data(SMSG_MOVE_SET_COLLISION_HGT, unit->GetPackGUID().size() + 4 + 4);
     data << unit->GetPackGUID();
@@ -47,7 +31,8 @@ void MovementPacketSender::SendHeightChangeToMover(Unit* unit, float newHeight)
 
 void MovementPacketSender::SendHeightChangeToObservers(Unit* unit, float newHeight)
 {
-    Player* mover = unit->GetPlayerMovingMe();
+    WorldSession* session = unit->GetPlayerMovingMe();
+    Player* mover = session ? session->GetPlayer() : nullptr;
     if (!mover)
     {
         TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendHeightChangeToObservers: Incorrect use of the function. It was called on a unit controlled by the server!");
@@ -63,19 +48,19 @@ void MovementPacketSender::SendHeightChangeToObservers(Unit* unit, float newHeig
 
 void MovementPacketSender::SendTeleportAckPacket(Unit* unit, MovementInfo const& movementInfo)
 {
-    Player* mover = unit->GetPlayerMovingMe();
+    WorldSession* session = unit->GetPlayerMovingMe();
+    Player* mover = session ? session->GetPlayer() : nullptr;
     if (!mover)
     {
         TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendTeleportAckPacket: Incorrect use of the function. It was called on a unit controlled by the server!");
         return;
     }
 
-    uint32 mCounter = unit->GetMovementCounterAndInc();
-    PlayerMovementPendingChange pendingChange;
-    pendingChange.movementCounter = mCounter;
+    PlayerMovementPendingChange pendingChange(mover->GetMap()->GetGameTimeMS());
+    pendingChange.guid = unit->GetGUID();
     pendingChange.movementChangeType = TELEPORT;
 
-    unit->PushPendingMovementChange(pendingChange);
+    uint32 mCounter = session->PushPendingMovementChange(pendingChange);
 
     WorldPacket data(MSG_MOVE_TELEPORT_ACK, 41);
     data << unit->GetPackGUID();
@@ -90,7 +75,8 @@ void MovementPacketSender::SendTeleportPacket(Unit* unit, MovementInfo const& mo
     // 1) to teleport NPCs controlled by the server.
     // 2) to inform of the (acknowledged) teleport of a player-controlled unit
     // that's why here, unit->GetPlayerMovingMe() CAN be NULL. In that case, we are in scenario 1.
-    Player* mover = unit->GetPlayerMovingMe();
+    ASSERT(unit->GetPlayerMovingMe());
+    Player* mover = unit->GetPlayerMovingMe()->GetPlayer();
 
     WorldPacket data(MSG_MOVE_TELEPORT, 38);
     data << unit->GetPackGUID();
@@ -116,7 +102,8 @@ Opcodes const MovementPacketSender::moveTypeToOpcode[MAX_MOVE_TYPE][3] =
 
 void MovementPacketSender::SendSpeedChangeToMover(Unit* unit, UnitMoveType mtype, float newRate)
 {
-    Player* mover = unit->GetPlayerMovingMe();
+    WorldSession* session = unit->GetPlayerMovingMe();
+    Player* mover = session ? session->GetPlayer() : nullptr;
     if (!mover)
     {
         TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendSpeedChangeToMover: Incorrect use of the function. It was called on a unit controlled by the server!");
@@ -124,12 +111,11 @@ void MovementPacketSender::SendSpeedChangeToMover(Unit* unit, UnitMoveType mtype
     }
 
     float newSpeedFlat = newRate * baseMoveSpeed[mtype];
-    uint32 mCounter = unit->GetMovementCounterAndInc();
-    PlayerMovementPendingChange pendingChange;
-    pendingChange.movementCounter = mCounter;
+    PlayerMovementPendingChange pendingChange(unit->GetMap()->GetGameTimeMS());
+    pendingChange.guid = unit->GetGUID();
     pendingChange.newValue = newSpeedFlat;
     pendingChange.movementChangeType = MovementPacketSender::GetChangeTypeByMoveType(mtype);
-    unit->PushPendingMovementChange(pendingChange);
+    uint32 mCounter = session->PushPendingMovementChange(pendingChange);
 
     WorldPacket data;
     data.Initialize(moveTypeToOpcode[mtype][1], mtype != MOVE_RUN ? 8 + 4 + 4 : 8 + 4 + 1 + 4);
@@ -163,7 +149,8 @@ MovementChangeType MovementPacketSender::GetChangeTypeByMoveType(UnitMoveType mo
 
 void MovementPacketSender::SendSpeedChangeToObservers(Unit* unit, UnitMoveType mtype, float newRate)
 {
-    Player* mover = unit->GetPlayerMovingMe();
+    WorldSession* session = unit->GetPlayerMovingMe();
+    Player* mover = session ? session->GetPlayer() : nullptr;
     if (!mover)
     {
         TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendSpeedChangeToObservers: Incorrect use of the function. It was called on a unit controlled by the server!");
@@ -188,23 +175,23 @@ void MovementPacketSender::SendSpeedChangeToAll(Unit* unit, UnitMoveType mtype, 
 
 void MovementPacketSender::SendKnockBackToMover(Unit* unit, float vcos, float vsin, float speedXY, float speedZ)
 {
-    Player* mover = unit->GetPlayerMovingMe();
+    WorldSession* session = unit->GetPlayerMovingMe();
+    Player* mover = session ? session->GetPlayer() : nullptr;
     if (!mover)
     {
         TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendKnockBackToMover: Incorrect use of the function. It was called on a unit controlled by the server!");
         return;
     }
 
-    uint32 mCounter = unit->GetMovementCounterAndInc();
-    PlayerMovementPendingChange pendingChange;
-    pendingChange.movementCounter = mCounter;
+    PlayerMovementPendingChange pendingChange(unit->GetMap()->GetGameTimeMS());
+    pendingChange.guid = unit->GetGUID();
     pendingChange.movementChangeType = KNOCK_BACK;
     pendingChange.knockbackInfo.vcos = vcos;
     pendingChange.knockbackInfo.vsin = vsin;
     pendingChange.knockbackInfo.speedXY = speedXY;
     pendingChange.knockbackInfo.speedZ = speedZ;
 
-    unit->PushPendingMovementChange(pendingChange);
+    uint32 mCounter = session->PushPendingMovementChange(pendingChange);
 
     WorldPacket data(SMSG_MOVE_KNOCK_BACK, (8 + 4 + 4 + 4 + 4 + 4));
     data << unit->GetPackGUID();
@@ -218,7 +205,8 @@ void MovementPacketSender::SendKnockBackToMover(Unit* unit, float vcos, float vs
 
 void MovementPacketSender::SendKnockBackToObservers(Unit* unit, float vcos, float vsin, float speedXY, float speedZ)
 {
-    Player* mover = unit->GetPlayerMovingMe();
+    WorldSession* session = unit->GetPlayerMovingMe();
+    Player* mover = session ? session->GetPlayer() : nullptr;
     if (!mover)
     {
         TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendSpeedChangeToObservers: Incorrect use of the function. It was called on a unit controlled by the server!");
@@ -236,7 +224,8 @@ void MovementPacketSender::SendKnockBackToObservers(Unit* unit, float vcos, floa
 
 void MovementPacketSender::SendMovementFlagChangeToMover(Unit* unit, MovementFlags mFlag, bool apply)
 {
-    Player* mover = unit->GetPlayerMovingMe();
+    WorldSession* session = unit->GetPlayerMovingMe();
+    Player* mover = session ? session->GetPlayer() : nullptr;
     if (!mover)
     {
         TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendMovementFlagChangeToMover: Incorrect use of the function. It was called on a unit controlled by the server!");
@@ -260,13 +249,12 @@ void MovementPacketSender::SendMovementFlagChangeToMover(Unit* unit, MovementFla
             return;
     }
 
-    uint32 mCounter = unit->GetMovementCounterAndInc();
-    PlayerMovementPendingChange pendingChange;
-    pendingChange.movementCounter = mCounter;
+    PlayerMovementPendingChange pendingChange(unit->GetMap()->GetGameTimeMS());
+    pendingChange.guid = unit->GetGUID();
     pendingChange.movementChangeType = movementChangeType;
     pendingChange.apply = apply;
 
-    unit->PushPendingMovementChange(pendingChange);
+    uint32 mCounter = session->PushPendingMovementChange(pendingChange);
 
 
     WorldPacket data(opcode, 12 + 4); // is the upper bound of unit->GetPackGUID().size() indeed equal to 12?
@@ -295,13 +283,13 @@ void MovementPacketSender::SendMovementFlagChangeToMover(Unit* unit, MovementFla
             return;
     }
 
-    uint32 mCounter = unit->GetMovementCounterAndInc();
+    WorldSession* session = mover->GetSession();
     PlayerMovementPendingChange pendingChange;
-    pendingChange.movementCounter = mCounter;
+    pendingChange.guid = unit->GetGUID();
     pendingChange.movementChangeType = movementChangeType;
     pendingChange.apply = apply;
 
-    unit->PushPendingMovementChange(pendingChange);
+    uint32 mCounter = session->PushPendingMovementChange(pendingChange);
 
     WorldPacket data(opcode, 12 + 4); // is the upper bound of unit->GetPackGUID().size() indeed equal to 12?
     data << unit->GetPackGUID();

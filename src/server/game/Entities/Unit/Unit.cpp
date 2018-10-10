@@ -278,12 +278,6 @@ Unit::Unit(bool isWorldObject)
     m_canDualWield = false;
     m_justCCed = 0;
 
-    m_movementCounter = 0;
-    lastMoveClientTimestamp = 0;
-    lastMoveServerTimestamp = 0;
-
-    m_rootTimes = 0;
-
     m_state = 0;
     m_deathState = ALIVE;
 
@@ -400,8 +394,6 @@ void Unit::Update(uint32 p_time)
     // Spells must be processed with event system BEFORE they go to _UpdateSpells.
     // Or else we may have some SPELL_STATE_FINISHED spells stalled in pointers, that is bad.
     m_Events.Update(p_time);
-
-    CheckPendingMovementAcks();
 
     if (!IsInWorld())
         return;
@@ -7528,7 +7520,8 @@ void Unit::SetSpeedRate(UnitMoveType mtype, float rate, bool sendUpdate /*= true
 
     // Update speed only on change
     MovementChangeType changeType = MovementPacketSender::GetChangeTypeByMoveType(mtype);
-    if (m_speed_rate[mtype] == rate && !HasPendingMovementChange(changeType))
+    if (m_speed_rate[mtype] == rate 
+        && (!m_playerMovingMe || !m_playerMovingMe->HasPendingMovementChange(changeType)))
         return;
 
     if (IsMovedByPlayer() && IsInWorld())
@@ -8962,20 +8955,6 @@ void CharmInfo::SetSpellAutocast(SpellInfo const* spellInfo, bool state)
     }
 }
 
-Unit* Unit::GetUnitBeingMoved() const
-{
-    if (Player const* player = ToPlayer())
-        return player->m_unitMovedByMe;
-    return nullptr;
-}
-
-Player* Unit::GetPlayerBeingMoved() const
-{
-    if (Unit* mover = GetUnitBeingMoved())
-        return mover->ToPlayer();
-    return nullptr;
-}
-
 bool Unit::IsFrozen() const
 {
     return HasAuraState(AURA_STATE_FROZEN);
@@ -9977,7 +9956,8 @@ void Unit::SetStunned(bool apply)
 void Unit::SetRooted(bool apply)
 {
     // do nothing if the unit is already in the required state
-    if ((HasUnitMovementFlag(MOVEMENTFLAG_ROOT) || HasUnitMovementFlag(MOVEMENTFLAG_PENDING_ROOT)) == apply && !HasPendingMovementChange(ROOT))
+    if ((HasUnitMovementFlag(MOVEMENTFLAG_ROOT) || HasUnitMovementFlag(MOVEMENTFLAG_PENDING_ROOT)) == apply 
+        && (!m_playerMovingMe || !m_playerMovingMe->HasPendingMovementChange(ROOT)))
         return;
 
     if (apply)
@@ -10171,7 +10151,7 @@ bool Unit::SetCharmedBy(Unit* charmer, CharmType type, AuraApplication const* au
         if (player->IsAFK())
             player->ToggleAFK();
 
-        player->SetClientControl(this, false);
+        player->GetSession()->SetClientControl(this, false);
     }
 
     // charm is set by aura, and aura effect remove handler was called during apply handler execution
@@ -10203,7 +10183,7 @@ bool Unit::SetCharmedBy(Unit* charmer, CharmType type, AuraApplication const* au
             case CHARM_TYPE_POSSESS:
                 SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_POSSESSED);
                 charmer->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_REMOVE_CLIENT_CONTROL);
-                playerCharmer->SetClientControl(this, true);
+                playerCharmer->GetSession()->SetClientControl(this, true);
                 playerCharmer->PossessSpellInitialize();
                 AddUnitState(UNIT_STATE_POSSESSED);
                 break;
@@ -10320,8 +10300,8 @@ void Unit::RemoveCharmedBy(Unit* charmer)
 #endif
         case CHARM_TYPE_POSSESS:
             ClearUnitState(UNIT_STATE_POSSESSED);
-            playerCharmer->SetClientControl(this, false);
-            playerCharmer->SetClientControl(charmer, true);
+            playerCharmer->GetSession()->SetClientControl(this, false);
+            playerCharmer->GetSession()->SetClientControl(charmer, true);
             charmer->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_REMOVE_CLIENT_CONTROL);
             RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_POSSESSED);
             break;
@@ -10359,7 +10339,7 @@ void Unit::RemoveCharmedBy(Unit* charmer)
     }
 
     if (Player* player = ToPlayer())
-        player->SetClientControl(this, true);
+        player->GetSession()->SetClientControl(this, true);
 
     // reset confused movement for example
     ApplyControlStatesIfNeeded();
@@ -10810,7 +10790,11 @@ bool Unit::SetWalk(bool enable)
 
 void Unit::SetDisableGravity(bool apply)
 {
-    if (apply == HasUnitMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY) && !HasPendingMovementChange(GRAVITY_DISABLE))
+    if (apply == HasUnitMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY)
+#ifdef LICH_KING
+        && (!m_playerMovingMe || !m_playerMovingMe->HasPendingMovementChange(GRAVITY))
+#endif
+        )
         return;
 
     if (IsMovedByPlayer() && IsInWorld())
@@ -10847,7 +10831,8 @@ bool Unit::SetSwim(bool enable)
 
 void Unit::SetFlying(bool apply)
 {
-    if (apply == HasUnitMovementFlag(MOVEMENTFLAG_CAN_FLY) && !HasPendingMovementChange(SET_CAN_FLY))
+    if (apply == HasUnitMovementFlag(MOVEMENTFLAG_CAN_FLY) 
+        && (!m_playerMovingMe || !m_playerMovingMe->HasPendingMovementChange(SET_CAN_FLY)))
         return;
 
     if (IsMovedByPlayer() && IsInWorld())
@@ -10890,7 +10875,8 @@ void Unit::SetFlyingReal(bool apply)
 
 void Unit::SetWaterWalking(bool apply)
 {
-    if (apply == HasUnitMovementFlag(MOVEMENTFLAG_WATERWALKING) && !HasPendingMovementChange(WATER_WALK))
+    if (apply == HasUnitMovementFlag(MOVEMENTFLAG_WATERWALKING) 
+        && (!m_playerMovingMe || !m_playerMovingMe->HasPendingMovementChange(WATER_WALK)))
         return;
 
     if (IsMovedByPlayer() && IsInWorld())
@@ -10916,7 +10902,8 @@ void Unit::SetWaterWalkingReal(bool apply)
 
 void Unit::SetFeatherFall(bool apply)
 {
-    if (apply == HasUnitMovementFlag(MOVEMENTFLAG_FALLING_SLOW) && !HasPendingMovementChange(FEATHER_FALL))
+    if (apply == HasUnitMovementFlag(MOVEMENTFLAG_FALLING_SLOW) 
+        && (!m_playerMovingMe || !m_playerMovingMe->HasPendingMovementChange(FEATHER_FALL)))
         return;
 
     if (IsMovedByPlayer() && IsInWorld())
@@ -10943,7 +10930,8 @@ void Unit::SetFeatherFallReal(bool apply)
 
 void Unit::SetHover(bool apply)
 {
-    if (apply == HasUnitMovementFlag(MOVEMENTFLAG_HOVER) && !HasPendingMovementChange(SET_HOVER))
+    if (apply == HasUnitMovementFlag(MOVEMENTFLAG_HOVER) 
+        && (!m_playerMovingMe || !m_playerMovingMe->HasPendingMovementChange(SET_HOVER)))
         return;
 
     if (IsMovedByPlayer() && IsInWorld())
@@ -11313,65 +11301,6 @@ void Unit::UpdateHeight(float newZ)
 #endif
 }
 
-PlayerMovementPendingChange Unit::PopPendingMovementChange()
-{
-    PlayerMovementPendingChange result = m_pendingMovementChanges.front();
-    m_pendingMovementChanges.pop_front();
-    return result;
-}
-
-void Unit::PushPendingMovementChange(PlayerMovementPendingChange newChange)
-{
-    m_pendingMovementChanges.emplace_back(std::move(newChange));
-}
-
-bool Unit::HasPendingMovementChange(uint16 opcode) const
-{
-    if (m_pendingMovementChanges.empty())
-        return false;
-
-    MovementChangeType type = INVALID;
-    switch (opcode)
-    {
-    case MSG_MOVE_TELEPORT_ACK:                        type = TELEPORT;                         break;
-    case CMSG_MOVE_KNOCK_BACK_ACK:                     type = KNOCK_BACK;                       break;
-    case CMSG_FORCE_MOVE_ROOT_ACK:                     type = ROOT;                             break;
-    case CMSG_FORCE_MOVE_UNROOT_ACK:                   type = ROOT;                             break;
-    case CMSG_MOVE_WATER_WALK_ACK:                     type = WATER_WALK;                       break;
-    case CMSG_FORCE_WALK_SPEED_CHANGE_ACK:             type = SPEED_CHANGE_WALK;                break;
-    case CMSG_FORCE_RUN_SPEED_CHANGE_ACK:              type = SPEED_CHANGE_RUN;                 break;
-    case CMSG_FORCE_RUN_BACK_SPEED_CHANGE_ACK:         type = SPEED_CHANGE_RUN_BACK;            break;
-    case CMSG_FORCE_SWIM_SPEED_CHANGE_ACK:             type = SPEED_CHANGE_SWIM;                break;
-    case CMSG_FORCE_SWIM_BACK_SPEED_CHANGE_ACK:        type = SPEED_CHANGE_SWIM_BACK;           break;
-    case CMSG_FORCE_TURN_RATE_CHANGE_ACK:              type = RATE_CHANGE_TURN;                 break;
-    case CMSG_FORCE_FLIGHT_SPEED_CHANGE_ACK:           type = SPEED_CHANGE_FLIGHT_SPEED;        break;
-    case CMSG_FORCE_FLIGHT_BACK_SPEED_CHANGE_ACK:      type = SPEED_CHANGE_FLIGHT_BACK_SPEED;   break;
-    case CMSG_MOVE_HOVER_ACK:                          type = SET_HOVER;                        break;
-    case CMSG_MOVE_SET_CAN_FLY_ACK:                    type = SET_CAN_FLY;                      break;
-    case CMSG_MOVE_FEATHER_FALL_ACK:                   type = FEATHER_FALL;                     break;
-#ifdef LICH_KING
-    case LK_CMSG_FORCE_PITCH_RATE_CHANGE_ACK:          type = RATE_CHANGE_PITCH;                break;
-    case LK_CMSG_MOVE_GRAVITY_DISABLE_ACK:             type = GRAVITY_DISABLE;                  break;
-    case LK_CMSG_MOVE_GRAVITY_ENABLE_ACK:              type = GRAVITY_DISABLE;                  break;
-    case LK_CMSG_MOVE_SET_CAN_TRANSITION_BETWEEN_SWIM_AND_FLY_ACK: type = SET_CAN_TRANSITION_BETWEEN_SWIM_AND_FLY; break;
-    case LK_CMSG_MOVE_SET_COLLISION_HGT_ACK:           type = SET_COLLISION_HGT;                break;
-#endif
-    default:
-        return false;
-    }
-
-    return m_pendingMovementChanges.front().movementChangeType == type;
-}
-
-bool Unit::HasPendingMovementChange(MovementChangeType changeType) const
-{
-    return std::find_if(m_pendingMovementChanges.begin(), m_pendingMovementChanges.end(),
-        [changeType](PlayerMovementPendingChange const& pendingChange)
-    {
-        return pendingChange.movementChangeType == changeType;
-    }) != m_pendingMovementChanges.end();
-}
-
 void Unit::ValidateMovementInfo(MovementInfo* mi)
 {
     //! Anti-cheat checks.
@@ -11382,10 +11311,10 @@ void Unit::ValidateMovementInfo(MovementInfo* mi)
         { \
             TC_LOG_INFO("cheat", "Unit::ValidateMovementInfo: A violation has been detected (%s) for player GUID: %u. The player will be kicked." \
                 " Data from client: MovementFlags: %u, MovementFlags2: %u. Data in the server: MovementFlags: %u, MovementFlags2: %u.", \
-                STRINGIZE(check), GetPlayerMovingMe()->GetGUID().GetCounter(), \
+                STRINGIZE(check), GetPlayerMovingMe()->GetPlayer()->GetGUID().GetCounter(), \
                             mi->GetMovementFlags(), mi->GetExtraMovementFlags(), \
                             GetMovementInfo().GetMovementFlags(), GetMovementInfo().GetExtraMovementFlags()); \
-            GetPlayerMovingMe()->GetSession()->KickPlayer(); \
+            GetPlayerMovingMe()->KickPlayer(); \
             return; \
         } \
     }
@@ -11429,6 +11358,8 @@ void Unit::ValidateMovementInfo(MovementInfo* mi)
     CHECK_FOR_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_CAN_FLY) != oldMovementInfo.HasMovementFlag(MOVEMENTFLAG_CAN_FLY));
     CHECK_FOR_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_HOVER) != oldMovementInfo.HasMovementFlag(MOVEMENTFLAG_HOVER));
     CHECK_FOR_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_WATERWALKING) != oldMovementInfo.HasMovementFlag(MOVEMENTFLAG_WATERWALKING));
+    //incorrect! kick with mind control + stun
+
     CHECK_FOR_VIOLATING_FLAGS((mi->HasMovementFlag(MOVEMENTFLAG_ROOT) || mi->HasMovementFlag(MOVEMENTFLAG_PENDING_ROOT)) != (oldMovementInfo.HasMovementFlag(MOVEMENTFLAG_ROOT) || oldMovementInfo.HasMovementFlag(MOVEMENTFLAG_PENDING_ROOT)));
     CHECK_FOR_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY) != oldMovementInfo.HasMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY));
 #ifdef LICH_KING
@@ -11460,7 +11391,7 @@ void Unit::UpdateMovementInfo(MovementInfo movementInfo)
 {
     if (!IsMovedByPlayer())
     {
-        TC_LOG_ERROR("entities.unit", "Unit::UpdateMovementInfo call on a unit not moved by a player. This should not happen.");
+        TC_LOG_ERROR("movement", "Unit::UpdateMovementInfo call on a unit not moved by a player. This should not happen.");
         return;
     }
 
@@ -11470,7 +11401,7 @@ void Unit::UpdateMovementInfo(MovementInfo movementInfo)
         return;
     }
     //We received the client time but need to send the movement with server time to other players
-    WorldSession* playerSession = GetPlayerMovingMe()->GetSession();
+    WorldSession* playerSession = GetPlayerMovingMe();
     playerSession->SetLastMoveClientTimestamp(movementInfo.time); // Needed for speed cheat detection
     playerSession->SetLastMoveServerTimestamp(GetMap()->GetGameTimeMS());
      
@@ -11482,6 +11413,7 @@ void Unit::UpdateMovementInfo(MovementInfo movementInfo)
         movementTime = GetMap()->GetGameTimeMS() + 100;
     }
     movementInfo.time = movementTime + STATIC_DELAY; //also add some static delay to further reduce jerkiness
+
     UpdatePosition(movementInfo.pos);
     m_movementInfo = movementInfo;
 }
@@ -12092,50 +12024,9 @@ float Unit::ComputeCollisionHeight() const
     return collisionHeight == 0.0f ? DEFAULT_COLLISION_HEIGHT : collisionHeight;
 }
 
-void Unit::SetMap(Map* map)
+PlayerMovementPendingChange::PlayerMovementPendingChange(uint32 time) :
+    time(time)
 {
-    if (FindMap() != map)
-        m_pendingMovementChanges.clear();
-
-    WorldObject::SetMap(map);
-}
-
-void Unit::CheckPendingMovementAcks()
-{
-    if (!HasPendingMovementChange())
-        return;
-
-    if (!FindMap())
-        return;
-
-    PlayerMovementPendingChange const& oldestChangeToAck = m_pendingMovementChanges.front();
-    if (GetMap()->GetGameTimeMS() > oldestChangeToAck.time + sWorld->getIntConfig(CONFIG_PENDING_MOVE_CHANGES_TIMEOUT))
-    {
-        /*
-        when players are teleported from one corner of a map to an other (example: from Dragonblight to the entrance of Naxxramas, both in the same map: Northend),
-        is it done through what is called a 'near' teleport. A near teleport always involve teleporting a player from one point to an other in the same map, even if
-        the distance is huge. When that distance is big enough, a loading screen appears on the client side. During that time, the client loads the surrounding zone
-        of the new location (and everything it contains). The problem is that, as long as the client hasn't finished loading the new zone, it will NOT ack the near
-        teleport. So if the server sends a near teleport order at a certain time and the client takes 20s to load the new zone (let's imagine a very slow computer),
-        even with zero latency, the server will receive an ack from the client only after 20s.
-        For this reason and because the current implementation is simple (you dear reader, feel free to improve it if you can), we will just ignore checking for
-        near teleport acks (for now. @todo).
-        */
-        if (oldestChangeToAck.movementChangeType == TELEPORT)
-            return;
-        Player *controller = GetPlayerMovingMe();
-        //ASSERT(controller != nullptr, "this shouldn't happen once transfer of move ownership is correctly implemented");
-        if (controller)
-        {
-            TC_LOG_INFO("cheat", "Unit::CheckPendingMovementAcks: Player GUID: %u took too long to acknowledge a movement change. He was therefore kicked.", GetPlayerMovingMe()->GetGUID().GetCounter());
-            controller->GetSession()->KickPlayer();
-        }
-    }
-}
-
-PlayerMovementPendingChange::PlayerMovementPendingChange()
-{
-    time = WorldGameTime::GetGameTimeMS();
 }
 
 //might slightly move targetPos
