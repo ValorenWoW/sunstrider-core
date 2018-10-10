@@ -315,12 +315,7 @@ void WorldSession::HandleMovementOpcodes(WorldPacket& recvData)
     Unit* mover = _activeMover;
 #endif
 
-    Player* plrMover = mover->ToPlayer(); // The unit we're currently moving
-
-    if (mover->GetDistance(movementInfo.pos) > 5.0f)
-    {
-        TC_LOG_ERROR("movement", "DEBUG: Moved too far!");
-    }
+    Player* plrMover = mover->ToPlayer();
 
     TC_LOG_TRACE("movement", "%s: Player %s, moving unit %s", GetOpcodeNameForLogging(static_cast<OpcodeClient>(recvData.GetOpcode())).c_str(), _player->GetName().c_str(), mover->GetName().c_str());
 
