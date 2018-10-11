@@ -10790,6 +10790,9 @@ bool Unit::SetWalk(bool enable)
 
 void Unit::SetDisableGravity(bool apply)
 {
+    if(!apply)
+        RemoveUnitMovementFlag(MOVEMENTFLAG_JUMPING_OR_FALLING);
+
     if (apply == HasUnitMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY)
 #ifdef LICH_KING
         && (!m_playerMovingMe || !m_playerMovingMe->HasPendingMovementChange(GRAVITY))
@@ -10797,6 +10800,7 @@ void Unit::SetDisableGravity(bool apply)
         )
         return;
 
+#ifdef LICH_KING
     if (IsMovedByPlayer() && IsInWorld())
         MovementPacketSender::SendMovementFlagChangeToMover(this, MOVEMENTFLAG_DISABLE_GRAVITY, apply);
     else if (IsMovedByPlayer() && !IsInWorld())
@@ -10806,14 +10810,24 @@ void Unit::SetDisableGravity(bool apply)
         SetDisableGravityReal(apply);
         MovementPacketSender::SendMovementFlagChangeToAll(this, MOVEMENTFLAG_DISABLE_GRAVITY, apply);
     }
+#else
+    SetDisableGravityReal(apply);
+#endif
 }
 
 void Unit::SetDisableGravityReal(bool apply)
 {
     if (apply)
+    {
         AddUnitMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY);
+        RemoveUnitMovementFlag(MOVEMENTFLAG_JUMPING_OR_FALLING);
+    }
     else
+    {
         RemoveUnitMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY);
+        if(GetTypeId() == TYPEID_PLAYER && !HasUnitMovementFlag(MOVEMENTFLAG_PLAYER_FLYING))
+            m_movementInfo.SetFallTime(0);
+    }
 }
 
 bool Unit::SetSwim(bool enable)
@@ -11358,11 +11372,12 @@ void Unit::ValidateMovementInfo(MovementInfo* mi)
     CHECK_FOR_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_CAN_FLY) != oldMovementInfo.HasMovementFlag(MOVEMENTFLAG_CAN_FLY));
     CHECK_FOR_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_HOVER) != oldMovementInfo.HasMovementFlag(MOVEMENTFLAG_HOVER));
     CHECK_FOR_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_WATERWALKING) != oldMovementInfo.HasMovementFlag(MOVEMENTFLAG_WATERWALKING));
-    //incorrect! kick with mind control + stun
-
     CHECK_FOR_VIOLATING_FLAGS((mi->HasMovementFlag(MOVEMENTFLAG_ROOT) || mi->HasMovementFlag(MOVEMENTFLAG_PENDING_ROOT)) != (oldMovementInfo.HasMovementFlag(MOVEMENTFLAG_ROOT) || oldMovementInfo.HasMovementFlag(MOVEMENTFLAG_PENDING_ROOT)));
-    CHECK_FOR_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY) != oldMovementInfo.HasMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY));
 #ifdef LICH_KING
+    //Don't check MOVEMENTFLAG_DISABLE_GRAVITY for TBC since it is not acked by client
+    CHECK_FOR_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY) != oldMovementInfo.HasMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY));
+    // sun: condition from sunwell for disable gravity
+    CHECK_FOR_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY) && GetTypeId() == TYPEID_UNIT && !ToCreature()->CanFly());
     CHECK_FOR_VIOLATING_FLAGS(mi->HasExtraMovementFlag(MOVEMENTFLAG2_CAN_TRANSITION_BETWEEN_SWIM_AND_FLY) != oldMovementInfo.HasExtraMovementFlag(MOVEMENTFLAG2_CAN_TRANSITION_BETWEEN_SWIM_AND_FLY));
 #endif
     CHECK_FOR_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_FALLING_SLOW) != oldMovementInfo.HasMovementFlag(MOVEMENTFLAG_FALLING_SLOW));
@@ -11376,10 +11391,6 @@ void Unit::ValidateMovementInfo(MovementInfo* mi)
 
     //! Cannot fly and fall at the same time
     CHECK_FOR_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_PLAYER_FLYING | MOVEMENTFLAG_DISABLE_GRAVITY) && mi->HasMovementFlag(MOVEMENTFLAG_JUMPING_OR_FALLING));
-
-    // sun: condition from sunwell for disable gravity (players can't send MOVEMENTFLAG_DISABLE_GRAVITY?)
-    CHECK_FOR_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY) && GetTypeId() == TYPEID_PLAYER);
-    CHECK_FOR_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_DISABLE_GRAVITY) && GetTypeId() == TYPEID_UNIT && !ToCreature()->CanFly());
 
     if (mi->HasMovementFlag(MOVEMENTFLAG_SPLINE_ENABLED) && (!movespline->Initialized() || movespline->Finalized()))
         mi->RemoveMovementFlag(MOVEMENTFLAG_SPLINE_ENABLED);
@@ -11413,7 +11424,6 @@ void Unit::UpdateMovementInfo(MovementInfo movementInfo)
         movementTime = GetMap()->GetGameTimeMS() + 100;
     }
     movementInfo.time = movementTime + STATIC_DELAY; //also add some static delay to further reduce jerkiness
-
     UpdatePosition(movementInfo.pos);
     m_movementInfo = movementInfo;
 }

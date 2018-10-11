@@ -129,6 +129,7 @@ lastMoveServerTimestamp(0),
 m_timeSyncCounter(0),
 m_timeSyncTimer(0),
 m_timeSyncServer(0),
+_pendingActiveMoverSplineId(0),
 _activeMover(nullptr)
 {
     memset(m_Tutorials, 0, sizeof(m_Tutorials));

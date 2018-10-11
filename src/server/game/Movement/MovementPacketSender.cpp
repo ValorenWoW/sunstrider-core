@@ -11,7 +11,7 @@ void MovementPacketSender::SendHeightChangeToMover(Unit* unit, float newHeight)
     Player* mover = session ? session->GetPlayer() : nullptr;
     if (!mover)
     {
-        TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendHeightChangeToMover: Incorrect use of the function. It was called on a unit controlled by the server!");
+        TC_LOG_ERROR("movement", "MovementPacketSender::SendHeightChangeToMover: Incorrect use of the function. It was called on a unit controlled by the server!");
         return;
     }
 
@@ -35,7 +35,7 @@ void MovementPacketSender::SendHeightChangeToObservers(Unit* unit, float newHeig
     Player* mover = session ? session->GetPlayer() : nullptr;
     if (!mover)
     {
-        TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendHeightChangeToObservers: Incorrect use of the function. It was called on a unit controlled by the server!");
+        TC_LOG_ERROR("movement", "MovementPacketSender::SendHeightChangeToObservers: Incorrect use of the function. It was called on a unit controlled by the server!");
         return;
     }
 
@@ -52,7 +52,7 @@ void MovementPacketSender::SendTeleportAckPacket(Unit* unit, MovementInfo const&
     Player* mover = session ? session->GetPlayer() : nullptr;
     if (!mover)
     {
-        TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendTeleportAckPacket: Incorrect use of the function. It was called on a unit controlled by the server!");
+        TC_LOG_ERROR("movement", "MovementPacketSender::SendTeleportAckPacket: Incorrect use of the function. It was called on a unit controlled by the server!");
         return;
     }
 
@@ -106,7 +106,7 @@ void MovementPacketSender::SendSpeedChangeToMover(Unit* unit, UnitMoveType mtype
     Player* mover = session ? session->GetPlayer() : nullptr;
     if (!mover)
     {
-        TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendSpeedChangeToMover: Incorrect use of the function. It was called on a unit controlled by the server!");
+        TC_LOG_ERROR("movement", "MovementPacketSender::SendSpeedChangeToMover: Incorrect use of the function. It was called on a unit controlled by the server!");
         return;
     }
 
@@ -153,7 +153,7 @@ void MovementPacketSender::SendSpeedChangeToObservers(Unit* unit, UnitMoveType m
     Player* mover = session ? session->GetPlayer() : nullptr;
     if (!mover)
     {
-        TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendSpeedChangeToObservers: Incorrect use of the function. It was called on a unit controlled by the server!");
+        TC_LOG_ERROR("movement", "MovementPacketSender::SendSpeedChangeToObservers: Incorrect use of the function. It was called on a unit controlled by the server!");
         return;
     }
 
@@ -179,7 +179,7 @@ void MovementPacketSender::SendKnockBackToMover(Unit* unit, float vcos, float vs
     Player* mover = session ? session->GetPlayer() : nullptr;
     if (!mover)
     {
-        TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendKnockBackToMover: Incorrect use of the function. It was called on a unit controlled by the server!");
+        TC_LOG_ERROR("movement", "MovementPacketSender::SendKnockBackToMover: Incorrect use of the function. It was called on a unit controlled by the server!");
         return;
     }
 
@@ -209,7 +209,7 @@ void MovementPacketSender::SendKnockBackToObservers(Unit* unit, float vcos, floa
     Player* mover = session ? session->GetPlayer() : nullptr;
     if (!mover)
     {
-        TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendSpeedChangeToObservers: Incorrect use of the function. It was called on a unit controlled by the server!");
+        TC_LOG_ERROR("movement", "MovementPacketSender::SendSpeedChangeToObservers: Incorrect use of the function. It was called on a unit controlled by the server!");
         return;
     }
 
@@ -245,7 +245,7 @@ void MovementPacketSender::SendMovementFlagChangeToMover(Unit* unit, MovementFla
         case MOVEMENTFLAG_DISABLE_GRAVITY:      opcode = apply ? SMSG_MOVE_GRAVITY_DISABLE : SMSG_MOVE_GRAVITY_ENABLE; movementChangeType = GRAVITY_DISABLE; break;
 #endif
         default:
-            TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendMovementFlagChangeToMover: Unsupported MovementFlag (%d), data not sent to client.", mFlag);
+            TC_LOG_ERROR("movement", "MovementPacketSender::SendMovementFlagChangeToMover: Unsupported MovementFlag (%d), data not sent to client.", mFlag);
             return;
     }
 
@@ -269,7 +269,7 @@ void MovementPacketSender::SendMovementFlagChangeToMover(Unit* unit, MovementFla
     Player* mover = unit->GetPlayerMovingMe();
     if (!mover)
     {
-        TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendMovementFlagChangeToMover: Incorrect use of the function. It was called on a unit controlled by the server!");
+        TC_LOG_ERROR("movement", "MovementPacketSender::SendMovementFlagChangeToMover: Incorrect use of the function. It was called on a unit controlled by the server!");
         return;
     }
 
@@ -279,7 +279,7 @@ void MovementPacketSender::SendMovementFlagChangeToMover(Unit* unit, MovementFla
     {
         case MOVEMENTFLAG2_CAN_TRANSITION_BETWEEN_SWIM_AND_FLY: opcode = apply ? SMSG_MOVE_SET_CAN_TRANSITION_BETWEEN_SWIM_AND_FLY : SMSG_MOVE_UNSET_CAN_TRANSITION_BETWEEN_SWIM_AND_FLY; movementChangeType = SET_CAN_TRANSITION_BETWEEN_SWIM_AND_FLY; break;
         default:
-            TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendMovementFlagChangeToMover: Unsupported MovementFlag2 (%d), data not sent to client.", mFlag);
+            TC_LOG_ERROR("movement", "MovementPacketSender::SendMovementFlagChangeToMover: Unsupported MovementFlag2 (%d), data not sent to client.", mFlag);
             return;
     }
 
@@ -312,7 +312,7 @@ void MovementPacketSender::SendMovementFlagChangeToObservers(Unit* unit, Movemen
         case MOVEMENTFLAG_DISABLE_GRAVITY:      opcode = MSG_MOVE_GRAVITY_CHNG; break;
 #endif
         default:
-            TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendMovementFlagChangeToObservers: Unsupported MovementFlag (%d), data not sent to client.", mFlag);
+            TC_LOG_ERROR("movement", "MovementPacketSender::SendMovementFlagChangeToObservers: Unsupported MovementFlag (%d), data not sent to client.", mFlag);
             return;
     }
 
@@ -329,7 +329,7 @@ void MovementPacketSender::SendMovementFlagChangeToObservers(Unit* unit, Movemen
     {
         case MOVEMENTFLAG2_CAN_TRANSITION_BETWEEN_SWIM_AND_FLY:     opcode = MSG_MOVE_UPDATE_CAN_TRANSITION_BETWEEN_SWIM_AND_FLY; break;
         default:
-            TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendMovementFlagChangeToObservers: Unsupported MovementFlag (%d), data not sent to client.", mFlag);
+            TC_LOG_ERROR("movement", "MovementPacketSender::SendMovementFlagChangeToObservers: Unsupported MovementFlag (%d), data not sent to client.", mFlag);
             return;
     }
 
@@ -353,7 +353,7 @@ void MovementPacketSender::SendMovementFlagChangeToAll(Unit* unit, MovementFlags
         case MOVEMENTFLAG_FALLING_SLOW:     opcode = apply ? SMSG_SPLINE_MOVE_FEATHER_FALL      : SMSG_SPLINE_MOVE_NORMAL_FALL; break;
         case MOVEMENTFLAG_HOVER:            opcode = apply ? SMSG_SPLINE_MOVE_SET_HOVER         : SMSG_SPLINE_MOVE_UNSET_HOVER; break;
         default:
-            TC_LOG_ERROR("entities.unit", "MovementPacketSender::SendMovementFlagChangeToAll: Unsupported MovementFlag (%d), data not sent to client.", mFlag);
+            TC_LOG_ERROR("movement", "MovementPacketSender::SendMovementFlagChangeToAll: Unsupported MovementFlag (%d), data not sent to client.", mFlag);
             return;
     }
 

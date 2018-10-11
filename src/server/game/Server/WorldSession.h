@@ -1047,8 +1047,10 @@ class TC_GAME_API WorldSession
         uint32 _movementCounter;
 
         ObjectGuid _pendingActiveMover;
+        uint32 _pendingActiveMoverSplineId;
         Unit* _activeMover;
         void SetActiveMover(Unit* activeMover);
+        void SetActiveMoverReal(Unit* activeMover);
         /* Player Movement fields END*/
 };
 #endif

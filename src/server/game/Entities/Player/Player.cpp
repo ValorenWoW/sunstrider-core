@@ -4334,12 +4334,15 @@ void Player::BuildPlayerRepop()
 
 void Player::ResurrectPlayer(float restore_percent, bool applySickness)
 {
-    WorldPacket data(SMSG_DEATH_RELEASE_LOC, 4*4);          // remove spirit healer position
+    WorldPacket data(SMSG_DEATH_RELEASE_LOC, 4*4);          // remove spirit healer position, LK ok
     data << uint32(-1);
     data << float(0);
     data << float(0);
     data << float(0);
     SendDirectMessage(&data);
+
+    if (!HasUnitState(UNIT_STATE_ROOT))
+        SetRooted(false);
 
     // send spectate addon message
     if (HaveSpectators())

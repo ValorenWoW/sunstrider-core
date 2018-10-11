@@ -188,17 +188,31 @@ void WorldSession::HandleMoveSplineDoneOpcode(WorldPacket& recvData)
 {
     //TC_LOG_TRACE("network", "WORLD: Received CMSG_MOVE_SPLINE_DONE");
 
+    TC_LOG_TRACE("movement", "CMSG_MOVE_SPLINE_DONE: From player %s",
+        _player->GetName().c_str());
+
     MovementInfo movementInfo; // used only for proper packet read
+    uint32 splineId;
 #ifdef LICH_KING
     movementInfo.FillContentFromPacket(&recvData, true);
 #else
     movementInfo.FillContentFromPacket(&recvData, false);
 #endif
 
-    recvData.read_skip<uint32>();                          // spline id
+    recvData >> splineId;
 
-    TC_LOG_TRACE("movement", "CMSG_MOVE_SPLINE_DONE: From player %s controlling unit %s",
-        _player->GetName().c_str(), _activeMover->GetName().c_str());
+    if (_pendingActiveMoverSplineId == splineId)
+    {
+        Unit* mover = ObjectAccessor::GetUnit(*_player, _pendingActiveMover);
+        if (!mover)
+        {
+            TC_LOG_ERROR("movement", "CMSG_MOVE_SPLINE_DONE: Could not transfer unit control to player %s because unit with guid %s was not found",
+                _player->GetName().c_str(), _pendingActiveMover.ToString().c_str());
+            return;
+        }
+        SetActiveMoverReal(mover);
+        return;
+    }
 
     // in taxi flight packet received in 2 case:
     // 1) end taxi path in far (multi-node) flight

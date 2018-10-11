@@ -660,9 +660,8 @@ void WorldSession::InitActiveMover(Unit* activeMover)
     //Client will send CMSG_SET_ACTIVE_MOVER when joining a map
 }
 
-void WorldSession::SetActiveMover(Unit* activeMover)
+void WorldSession::SetActiveMoverReal(Unit* activeMover)
 {
-    anticheat->OnPlayerMoverChanged(_activeMover, activeMover);
     //Removing mover from other player client if any
     if (_activeMover)
         if (WorldSession* lastOwner = _activeMover->m_playerMovingMe)
@@ -672,8 +671,32 @@ void WorldSession::SetActiveMover(Unit* activeMover)
                 lastOwner->_activeMover = nullptr;
         }
 
+    _pendingActiveMover.Clear();
+    _pendingActiveMoverSplineId = 0;
+}
+
+//When calling this, _pendingActiveMover needs to be already set.
+//Here is the active mover sequence:
+// - Server tell the unit of his new active mover with SMSG_CLIENT_CONTROL_UPDATE 
+// - Client respond with CMSG_SET_ACTIVE_MOVER to enable this mover
+// - We send a spline on current unit position to transfer correct movement info
+// - Client respond CMSG_MOVE_SPLINE_DONE, transfer is complete
+// The spline step is necessary because when mover changed, it's possible that the client controlling it has not yet received 
+// the move flags of the mover that were set just before he took control. This is not possible when we keep the same mover since
+// those changes must be acked by client. Also, same problem is present with speed changes.
+void WorldSession::SetActiveMover(Unit* activeMover)
+{
+    //Also finish those of target player 
+    if (Player* playerMover = activeMover->ToPlayer())
+        playerMover->GetSession()->ResolveAllPendingChanges();
+
     _activeMover = activeMover;
     _activeMover->m_playerMovingMe = this;
+
+    activeMover->StopMovingOnCurrentPos(); //Send spline movement
+    _pendingActiveMoverSplineId = activeMover->movespline->GetId();
+    TC_LOG_ERROR("movement", "Received CMSG_SET_ACTIVE_MOVER for player %s with pending mover %s, now sending the spline movement (id %u)",
+        _player->GetName().c_str(), _pendingActiveMover.ToString().c_str(), _pendingActiveMoverSplineId);
 }
 
 // sent by client when gaining control of a unit
@@ -704,13 +727,9 @@ void WorldSession::HandleSetActiveMoverOpcode(WorldPacket &recvData)
 
         //Force finish all unresolved acks on previous mover when acquiring mover
         ResolveAllPendingChanges();
-        //Also finish those of target player 
-        if (Player* playerMover = mover->ToPlayer())
-            playerMover->GetSession()->ResolveAllPendingChanges();
     }
 
     SetActiveMover(mover);
-    _pendingActiveMover.Clear();
  }
 
 //CMSG_MOVE_NOT_ACTIVE_MOVER
@@ -1040,7 +1059,6 @@ void WorldSession::ResolveAllPendingChanges()
     if (!_activeMover)
         return;
 
-    //TODO: if all handler have the same struct, move them to PlayerMovementPendingChange class
     while (HasPendingMovementChange())
     {
         PlayerMovementPendingChange pendingChange = PopPendingMovementChange().second;
@@ -1230,6 +1248,14 @@ bool WorldSession::IsAuthorizedToMove(ObjectGuid guid, bool log /*= true*/)
 #endif
 
     bool authorized = _activeMover && (guid == _activeMover->GetGUID());
+    if (authorized && _pendingActiveMoverSplineId)
+    {
+        //we just changed to this mover, can't move until we finished the spline step
+        TC_LOG_TRACE("movement", "Tried to move with unit %s from player %u, but we're still in the process of mover switching",
+            guid.ToString().c_str(), _player->GetGUID().GetCounter());
+        return false;
+    }
+
     if(!authorized && log)
         TC_LOG_ERROR("movement", "Tried to move with non allowed unit %s from player %u", 
             guid.ToString().c_str(), _player->GetGUID().GetCounter());
