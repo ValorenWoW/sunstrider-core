@@ -9103,7 +9103,7 @@ void Unit::StopMoving()
     init.Stop();
 }
 
-uint32 Unit::StopMovingOnCurrentPos() 
+uint32 Unit::StopMovingOnCurrentPos(bool facing /*= true*/)
 {
     ClearUnitState(UNIT_STATE_MOVING);
 
@@ -9113,8 +9113,9 @@ uint32 Unit::StopMovingOnCurrentPos()
 
     DisableSpline(); // Required so Launch() won't recalculate position from previous spline
     Movement::MoveSplineInit init(this);
-    init.MoveTo(GetPositionX(), GetPositionY(), GetPositionZ());
-    init.SetFacing(GetOrientation());
+    init.MoveTo(GetPositionX(), GetPositionY(), GetPositionZ(), false, true);
+    if(facing)
+        init.SetFacing(GetOrientation());
     init.Launch();
     if (HasUnitMovementFlag(MOVEMENTFLAG_SPLINE_ENABLED))
         return movespline->GetId();
@@ -11327,10 +11328,10 @@ void Unit::ValidateMovementInfo(MovementInfo* mi)
     { \
         if (check) \
         { \
-            TC_LOG_INFO("cheat", "Unit::ValidateMovementInfo: A violation has been detected (%s) for player GUID: %u. The player will be kicked." \
+            TC_LOG_INFO("cheat", "Unit::ValidateMovementInfo: A violation has been detected (%s) for player %s (lowguid: %u) moving unit %s (GUID: %s). The player will be kicked." \
                 " Data from client: MovementFlags: %u, MovementFlags2: %u. Data in the server: MovementFlags: %u, MovementFlags2: %u.", \
-                STRINGIZE(check), GetPlayerMovingMe()->GetPlayer()->GetGUID().GetCounter(), \
-                            mi->GetMovementFlags(), mi->GetExtraMovementFlags(), \
+                STRINGIZE(check), GetPlayerMovingMe()->GetPlayer()->GetName().c_str(), GetPlayerMovingMe()->GetPlayer()->GetGUID().GetCounter(), \
+                            GetName().c_str(), GetGUID().ToString().c_str(), mi->GetMovementFlags(), mi->GetExtraMovementFlags(), \
                             GetMovementInfo().GetMovementFlags(), GetMovementInfo().GetExtraMovementFlags()); \
             GetPlayerMovingMe()->KickPlayer(); \
             return; \

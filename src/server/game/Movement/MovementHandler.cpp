@@ -700,7 +700,7 @@ void WorldSession::SetActiveMover(Unit* activeMover)
     TC_LOG_TRACE("movement", "Received CMSG_SET_ACTIVE_MOVER for player %s with pending mover %s, now sending the spline movement (id %u)",
         _player->GetName().c_str(), _pendingActiveMover.ToString().c_str(), _pendingActiveMoverSplineId);
 
-    _pendingActiveMoverSplineId = activeMover->StopMovingOnCurrentPos(); //Send spline movement
+    _pendingActiveMoverSplineId = activeMover->StopMovingOnCurrentPos(false); //Send spline movement
     if (_pendingActiveMoverSplineId == 0)
     {
         TC_LOG_FATAL("movement", "WorldSession::SetActiveMover: player %s with pending mover %s, FAILED to start spline movement",
