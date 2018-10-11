@@ -9111,7 +9111,7 @@ uint32 Unit::StopMovingOnCurrentPos()
     if (!IsInWorld())
         return 0;
 
-    DisableSpline(); // sunwell: required so Launch() won't recalculate position from previous spline
+    DisableSpline(); // Required so Launch() won't recalculate position from previous spline
     Movement::MoveSplineInit init(this);
     init.MoveTo(GetPositionX(), GetPositionY(), GetPositionZ());
     init.SetFacing(GetOrientation());
