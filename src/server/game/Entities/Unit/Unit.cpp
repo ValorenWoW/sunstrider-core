@@ -9103,19 +9103,23 @@ void Unit::StopMoving()
     init.Stop();
 }
 
-void Unit::StopMovingOnCurrentPos() // sunwell
+uint32 Unit::StopMovingOnCurrentPos() 
 {
     ClearUnitState(UNIT_STATE_MOVING);
 
     // not need send any packets if not in world
     if (!IsInWorld())
-        return;
+        return 0;
 
     DisableSpline(); // sunwell: required so Launch() won't recalculate position from previous spline
     Movement::MoveSplineInit init(this);
     init.MoveTo(GetPositionX(), GetPositionY(), GetPositionZ());
     init.SetFacing(GetOrientation());
     init.Launch();
+    if (HasUnitMovementFlag(MOVEMENTFLAG_SPLINE_ENABLED))
+        return movespline->GetId();
+    else
+        return 0;
 }
 
 void Unit::PauseMovement(uint32 timer/* = 0*/, uint8 slot/* = 0*/, bool forced/* = true*/)

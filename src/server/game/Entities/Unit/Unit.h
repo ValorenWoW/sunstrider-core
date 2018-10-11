@@ -1809,7 +1809,8 @@ class TC_GAME_API Unit : public WorldObject
         //returns wheter unit his currently stopped (= has any move related UNIT_STATE)
         bool IsStopped() const { return !(HasUnitState(UNIT_STATE_MOVING)); }
         void StopMoving();
-        void StopMovingOnCurrentPos();
+        //returns spline id
+        uint32 StopMovingOnCurrentPos();
         void PauseMovement(uint32 timer = 0, uint8 slot = 0, bool forced = true); // timer in ms
         void ResumeMovement(uint32 timer = 0, uint8 slot = 0); // timer in ms
 

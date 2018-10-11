@@ -657,6 +657,7 @@ void WorldSession::InitActiveMover(Unit* activeMover)
 {
     _activeMover = nullptr; //May have one from a previous session
     _pendingActiveMover = activeMover->GetGUID();
+    _allowedClientControl.insert(activeMover->GetGUID());
     //Client will send CMSG_SET_ACTIVE_MOVER when joining a map
 }
 
@@ -693,10 +694,18 @@ void WorldSession::SetActiveMover(Unit* activeMover)
     _activeMover = activeMover;
     _activeMover->m_playerMovingMe = this;
 
-    activeMover->StopMovingOnCurrentPos(); //Send spline movement
-    _pendingActiveMoverSplineId = activeMover->movespline->GetId();
-    TC_LOG_ERROR("movement", "Received CMSG_SET_ACTIVE_MOVER for player %s with pending mover %s, now sending the spline movement (id %u)",
+    TC_LOG_TRACE("movement", "Received CMSG_SET_ACTIVE_MOVER for player %s with pending mover %s, now sending the spline movement (id %u)",
         _player->GetName().c_str(), _pendingActiveMover.ToString().c_str(), _pendingActiveMoverSplineId);
+
+    _pendingActiveMoverSplineId = activeMover->StopMovingOnCurrentPos(); //Send spline movement
+    if (_pendingActiveMoverSplineId == 0)
+    {
+        TC_LOG_FATAL("movement", "WorldSession::SetActiveMover: player %s with pending mover %s, FAILED to start spline movement",
+            _player->GetName().c_str(), _pendingActiveMover.ToString().c_str());
+
+        //Unit will get stuck. Shouldn't ever happen in current impl.
+        DEBUG_ASSERT(false);
+    }
 }
 
 // sent by client when gaining control of a unit
@@ -711,7 +720,7 @@ void WorldSession::HandleSetActiveMoverOpcode(WorldPacket &recvData)
     if (_activeMover && _activeMover->GetGUID() == guid)
         return; //we already control this unit, ignore
 
-    if (_pendingActiveMover != guid)
+    if (!IsAuthorizedToMove(guid, true))
     {
         TC_LOG_ERROR("movement", "WorldSession::HandleSetActiveMoverOpcode: The client of player %s doesn't have the permission to move this unit (GUID: %s)!", _player->GetName().c_str(), guid.ToString().c_str());
         return;
@@ -768,6 +777,44 @@ void WorldSession::HandleMoveNotActiveMover(WorldPacket &recvData)
         GetOpcodeNameForLogging(static_cast<OpcodeClient>(recvData.GetOpcode())).c_str(), _player->GetName().c_str(), _activeMover->GetName().c_str());
 
     ResetActiveMover();
+}
+
+void WorldSession::SetClientControl(Unit* target, bool allowMove)
+{
+    // still affected by some aura that shouldn't allow control, only allow on last such aura to be removed
+    if (allowMove && target->HasUnitState(UNIT_STATE_CANT_CLIENT_CONTROL))
+        return;
+
+    WorldPacket data(SMSG_CLIENT_CONTROL_UPDATE, target->GetPackGUID().size() + 1);
+    data << target->GetPackGUID();
+    data << uint8(allowMove);
+    SendPacket(&data);
+
+    //sun: We told the client to change active mover but there will be some time before he respond
+    //We delay setting active mover until the client actually tells us he takes control with CMSG_SET_ACTIVE_MOVER
+
+    std::string action = allowMove ? "Sending" : "Removing";
+    TC_LOG_TRACE("movement", "SMSG_CLIENT_CONTROL_UPDATE: %s control of unit %s to client of %s",
+        action.c_str(), target->GetName().c_str(), _player->GetName().c_str());
+
+    if (allowMove)
+    {
+        if (target == _player)
+            _player->SetGuidValue(PLAYER_FARSIGHT, ObjectGuid::Empty);
+        else
+            _player->AddGuidValue(PLAYER_FARSIGHT, target->GetGUID());  //Setting PLAYER_FARSIGHT will trigger CMSG_FAR_SIGHT from client
+    }
+    else if (_player->GetGuidValue(PLAYER_FARSIGHT))
+        _player->SetViewpoint(target, false);
+
+    // Allow this session to take control of the unit with CMSG_SET_ACTIVE_MOVER
+    if (allowMove)
+    {
+        _allowedClientControl.insert(target->GetGUID());
+        _pendingActiveMover = target->GetGUID();
+    }
+    else
+        _allowedClientControl.erase(target->GetGUID());
 }
 
 void WorldSession::HandleMountSpecialAnimOpcode(WorldPacket& /*recvData*/)
@@ -1021,39 +1068,6 @@ void WorldSession::HandleSummonResponseOpcode(WorldPacket& recvData)
     _player->SummonIfPossible(agree);
 }
 
-void WorldSession::SetClientControl(Unit* target, bool allowMove)
-{
-    // still affected by some aura that shouldn't allow control, only allow on last such aura to be removed
-    if (allowMove && target->HasUnitState(UNIT_STATE_CANT_CLIENT_CONTROL))
-        return;
-
-    WorldPacket data(SMSG_CLIENT_CONTROL_UPDATE, target->GetPackGUID().size() + 1);
-    data << target->GetPackGUID();
-    data << uint8(allowMove);
-    SendPacket(&data);
-
-    //sun: We told the client to change active mover but there will be some time before he respond
-    //We delay setting active mover until the client actually tells us he takes control with CMSG_SET_ACTIVE_MOVER
-
-    std::string action = allowMove ? "Sending" : "Removing";
-        TC_LOG_TRACE("movement", "SMSG_CLIENT_CONTROL_UPDATE: %s control of unit %s to client of %s",
-            action.c_str(), target->GetName().c_str(), _player->GetName().c_str());
-
-    if (allowMove)
-    {
-        if (target == _player)
-            _player->SetGuidValue(PLAYER_FARSIGHT, ObjectGuid::Empty);
-        else
-            _player->AddGuidValue(PLAYER_FARSIGHT, target->GetGUID());  //Setting PLAYER_FARSIGHT will trigger CMSG_FAR_SIGHT from client
-    }
-    else if (_player->GetGuidValue(PLAYER_FARSIGHT))
-        _player->SetViewpoint(target, false);
-
-    // Allow this session to take control of the unit with CMSG_SET_ACTIVE_MOVER
-    if(allowMove)
-        _pendingActiveMover = target->GetGUID();
-}
-
 void WorldSession::ResolveAllPendingChanges()
 {
     if (!_activeMover)
@@ -1240,15 +1254,7 @@ void PlayerMovementPendingChange::_HandleMoveKnockBackAck(WorldSession* session,
 
 bool WorldSession::IsAuthorizedToMove(ObjectGuid guid, bool log /*= true*/)
 {
-#ifdef LICH_KING
-    FIXME;
-    //this logic is not compatible with TLK where players may have multiple valid movers.
-    //At least their vehicles + their player may be valid at the same time. I don't know about other cases.
-    //We need to change _activeMover to accept serveral valid movers.
-#endif
-
-    bool authorized = _activeMover && (guid == _activeMover->GetGUID());
-    if (authorized && _pendingActiveMoverSplineId)
+    if (_activeMover && (guid == _activeMover->GetGUID() && _pendingActiveMoverSplineId))
     {
         //we just changed to this mover, can't move until we finished the spline step
         TC_LOG_TRACE("movement", "Tried to move with unit %s from player %u, but we're still in the process of mover switching",
@@ -1256,6 +1262,7 @@ bool WorldSession::IsAuthorizedToMove(ObjectGuid guid, bool log /*= true*/)
         return false;
     }
 
+    bool authorized = _allowedClientControl.count(guid) > 0;
     if(!authorized && log)
         TC_LOG_ERROR("movement", "Tried to move with non allowed unit %s from player %u", 
             guid.ToString().c_str(), _player->GetGUID().GetCounter());

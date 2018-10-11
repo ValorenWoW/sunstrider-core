@@ -1046,9 +1046,17 @@ class TC_GAME_API WorldSession
         std::deque<PendingChangePair> m_pendingMovementChanges;
         uint32 _movementCounter;
 
+        // describe all units that this unit has client control over. Example, a player on a vehicle has client control over himself and the vehicle at the same time.
+        // Or if player is MC someone, control over himself + target player
+        GuidSet _allowedClientControl;
+
+        // The mover we're currently activating if any
         ObjectGuid _pendingActiveMover;
+        // Spline id for mover activation process
         uint32 _pendingActiveMoverSplineId;
+        //The unit the client has designed as active Mover
         Unit* _activeMover;
+        // This is not instant and will begin mover transfer process
         void SetActiveMover(Unit* activeMover);
         void SetActiveMoverReal(Unit* activeMover);
         /* Player Movement fields END*/

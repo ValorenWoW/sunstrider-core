@@ -145,6 +145,9 @@ _activeMover(nullptr)
 /// WorldSession destructor
 WorldSession::~WorldSession()
 {
+    ResetActiveMover(true); //must be before player logout
+    ResolveAllPendingChanges();
+
     ///- unload player if not unloaded
     if (_player)
         LogoutPlayer(true);
@@ -162,9 +165,6 @@ WorldSession::~WorldSession()
     WorldPacket* packet = NULL;
     while (_recvQueue.next(packet))
         delete packet;
-
-    ResetActiveMover(true); 
-    ResolveAllPendingChanges();
 
     delete anticheat;
 
