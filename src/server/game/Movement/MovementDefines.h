@@ -92,11 +92,13 @@ public:
 
     PlayerMovementPendingChange(uint32 time);
 
-    void Resolve(PlayerMovementPendingChange const& change, WorldSession* session, Unit* mover, MovementInfo& movementInfo);
+    // If using this to resolve from a client ack, you must provide mover and movementInfo. Mover guid must match the guid in the pending change.
+    // Else, to resolve from the server info only (mover and movementInfo should be null)
+    void Resolve(PlayerMovementPendingChange const& change, WorldSession* session, Unit* mover = nullptr, MovementInfo* movementInfo = nullptr);
 private:
-    void _HandleMoveKnockBackAck(WorldSession* session, Unit* mover, MovementInfo& movementInfo);
+    void _HandleMoveKnockBackAck(WorldSession* session, Unit* mover, MovementInfo& movementInfo, bool validate);
     void _HandleMoveTeleportAck(WorldSession* session, Unit* mover, MovementInfo& movementInfo);
-    void _HandleMovementFlagChangeToggleAck(WorldSession* session, Unit* mover, MovementInfo& movementInfo);
+    void _HandleMovementFlagChangeToggleAck(WorldSession* session, Unit* mover, MovementInfo& movementInfo, bool validate);
     void _HandleForceSpeedChangeAck(WorldSession* session, Unit* mover, MovementInfo& movementInfo);
 };
 

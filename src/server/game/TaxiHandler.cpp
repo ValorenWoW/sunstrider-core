@@ -211,6 +211,10 @@ void WorldSession::HandleMoveSplineDoneOpcode(WorldPacket& recvData)
             return;
         }
         SetActiveMoverReal(mover);
+
+        TC_LOG_TRACE("movement", "CMSG_MOVE_SPLINE_DONE: Transfering real control of unit %s (%s) to player %s (%s)",
+            mover->GetName().c_str(), mover->GetGUID().ToString().c_str(), _player->GetName().c_str(), _player->GetName().c_str());
+
         return;
     }
 
