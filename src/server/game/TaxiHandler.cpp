@@ -203,17 +203,17 @@ void WorldSession::HandleMoveSplineDoneOpcode(WorldPacket& recvData)
 
     if (_pendingActiveMoverSplineId == splineId)
     {
-        Unit* mover = ObjectAccessor::GetUnit(*_player, _pendingActiveMover);
-        if (!mover)
+        if (IsAuthorizedToTakeControl(_activeMover->GetGUID()))
         {
-            TC_LOG_ERROR("movement", "CMSG_MOVE_SPLINE_DONE: Could not transfer unit control to player %s because unit with guid %s was not found",
-                _player->GetName().c_str(), _pendingActiveMover.ToString().c_str());
-            return;
+            AllowMover(_activeMover);
+            TC_LOG_TRACE("movement", "CMSG_MOVE_SPLINE_DONE: Enabling move of unit %s (%s) to player %s (%s)",
+                _activeMover->GetName().c_str(), _activeMover->GetGUID().ToString().c_str(), _player->GetName().c_str(), _player->GetName().c_str());
         }
-        SetActiveMoverReal(mover);
-
-        TC_LOG_TRACE("movement", "CMSG_MOVE_SPLINE_DONE: Transfering real control of unit %s (%s) to player %s (%s)",
-            mover->GetName().c_str(), mover->GetGUID().ToString().c_str(), _player->GetName().c_str(), _player->GetName().c_str());
+        else
+        {
+            TC_LOG_ERROR("movement", "CMSG_MOVE_SPLINE_DONE: Failed enabling move of unit %s (%s) to player %s (%s), pending spline id is correct but player is not allowed to take control anymore",
+                _activeMover->GetName().c_str(), _activeMover->GetGUID().ToString().c_str(), _player->GetName().c_str(), _player->GetName().c_str());
+        }
 
         return;
     }

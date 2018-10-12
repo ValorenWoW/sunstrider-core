@@ -1300,7 +1300,6 @@ class TC_GAME_API Unit : public WorldObject
         // returns the player that this unit is BEING CONTROLLED BY
         WorldSession* GetPlayerMovingMe() const { return m_playerMovingMe; }
         // only set for direct client control (possess effects, vehicles and similar)
-        // Should always match WorldSession::_activeMover
         WorldSession* m_playerMovingMe;
         // reflects direct client control (examples: a player MC another player or a creature (possess effects). a player takes control of a vehicle. etc...)
         bool IsMovedByPlayer() const { return m_playerMovingMe != nullptr; }

@@ -475,9 +475,11 @@ class TC_GAME_API WorldSession
         void ResolveAllPendingChanges();
         void SetClientControl(Unit* target, bool allowMove);
         bool IsAuthorizedToMove(ObjectGuid guid, bool log = true);
-        // The unit this client is currently moving. 
-        // This may be set to nullptr if another client does take control of the same unit
+        bool IsAuthorizedToTakeControl(ObjectGuid guid);
+        // The unit this client is currently trying to move (may be nullptr). /!\ He may not be able to, use GetAllowedActiveMover in most cases.
         Unit* GetActiveMover() const { return _activeMover; }
+        // The unit this client is currently trying to move, and is allowed to!
+        Unit* GetAllowedActiveMover() const;
         void ResetActiveMover(bool onDelete = false);
         //Use only when joining a new map
         void InitActiveMover(Unit* activeMover);
@@ -1046,19 +1048,19 @@ class TC_GAME_API WorldSession
         std::deque<PendingChangePair> m_pendingMovementChanges;
         uint32 _movementCounter;
 
-        // describe all units that this unit has client control over. Example, a player on a vehicle has client control over himself and the vehicle at the same time.
+        // describe all units this player can activate as movers. Example, a player on a vehicle has client control over himself and the vehicle at the same time.
         // Or if player is MC someone, control over himself + target player
         GuidSet _allowedClientControl;
-
-        // The mover we're currently activating if any
-        ObjectGuid _pendingActiveMover;
+        // Describe all units this player can directly control with move and acks packets. A client may have just activated a mover but not be allowed to control it yet.
+        GuidSet _allowedClientMove;
+        // Match the unit the client has designed as active Mover. /!\ Doesn't mean he actually can move it right now! Use GetAllowedActiveMover for that.
+        Unit* _activeMover;
         // Spline id for mover activation process
         uint32 _pendingActiveMoverSplineId;
-        //The unit the client has designed as active Mover
-        Unit* _activeMover;
         // This is not instant and will begin mover transfer process
         void SetActiveMover(Unit* activeMover);
-        void SetActiveMoverReal(Unit* activeMover);
+        void DisallowMover(Unit* mover);
+        void AllowMover(Unit* mover);
         /* Player Movement fields END*/
 };
 #endif

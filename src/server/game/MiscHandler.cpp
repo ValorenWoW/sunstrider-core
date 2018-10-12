@@ -498,14 +498,15 @@ void WorldSession::HandleSetSelectionOpcode( WorldPacket & recvData )
 void WorldSession::HandleStandStateChangeOpcode(WorldPacket & recvData)
 {
     //sun: affect moved unit and not player
-    if(!_activeMover || !_activeMover->IsAlive())
+    Unit* moved = GetAllowedActiveMover();
+    if(!moved || !moved->IsAlive())
         return;
 
     uint8 animstate;
     recvData >> animstate;
 
-    if (_activeMover->GetStandState() != animstate)
-        _activeMover->SetStandState(animstate);
+    if (moved->GetStandState() != animstate)
+        moved->SetStandState(animstate);
 }
 
 void WorldSession::HandleBugOpcode( WorldPacket & recvData )
@@ -1215,7 +1216,6 @@ void WorldSession::HandleRealmSplitOpcode( WorldPacket & recvData )
 void WorldSession::HandleFarSightOpcode( WorldPacket & recvData )
 {
     //TC_LOG_DEBUG("network", "WORLD: CMSG_FAR_SIGHT");
-    //TODO: needs some cheating protection here...
 
     bool apply;
     recvData >> apply;

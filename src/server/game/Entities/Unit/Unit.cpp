@@ -9114,6 +9114,7 @@ uint32 Unit::StopMovingOnCurrentPos(bool facing /*= true*/)
     DisableSpline(); // Required so Launch() won't recalculate position from previous spline
     Movement::MoveSplineInit init(this);
     init.MoveTo(GetPositionX(), GetPositionY(), GetPositionZ(), false, true);
+    init.SetVelocity(28.0f); //fixed velocity for simplified internal processing. Value doesn't really matter
     if(facing)
         init.SetFacing(GetOrientation());
     init.Launch();

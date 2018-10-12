@@ -76,7 +76,7 @@ void WorldSession::HandleMoveWorldportAck()
 
     if (player->IsInWorld())
     {
-        TC_LOG_ERROR("network", "%s %s is still in world when teleported from map %s (%u) to new map %s (%u)", ObjectGuid(player->GetGUID()).ToString().c_str(), GetPlayer()->GetName().c_str(), oldMap->GetMapName(), oldMap->GetId(), newMap ? newMap->GetMapName() : "Unknown", loc.GetMapId());
+        TC_LOG_ERROR("network", "Player %s (%u) is still in world when teleported from map %s (%u) to new map %s (%u)", GetPlayer()->GetName().c_str(), player->GetGUID().GetCounter(), oldMap->GetMapName(), oldMap->GetId(), newMap ? newMap->GetMapName() : "Unknown", loc.GetMapId());
         oldMap->RemovePlayerFromMap(player, false);
     }
 
@@ -85,7 +85,7 @@ void WorldSession::HandleMoveWorldportAck()
     // while the player is in transit, for example the map may get full
     if (!newMap || newMap->CannotEnter(player))
     {
-        TC_LOG_ERROR("network", "Map %d (%s) could not be created for player %d (%s), porting player to homebind", loc.GetMapId(), newMap ? newMap->GetMapName() : "Unknown", ObjectGuid(player->GetGUID()).GetCounter(), player->GetName().c_str());
+        TC_LOG_ERROR("network", "Map %d (%s) could not be created for player %d (%s), porting player to homebind", loc.GetMapId(), newMap ? newMap->GetMapName() : "Unknown", player->GetGUID().GetCounter(), player->GetName().c_str());
         player->TeleportTo(player->m_homebindMapId, player->m_homebindX, player->m_homebindY, player->m_homebindZ, player->GetOrientation());
         return;
     }
@@ -106,7 +106,7 @@ void WorldSession::HandleMoveWorldportAck()
     if(!player->GetMap()->AddPlayerToMap(player))
     {
         TC_LOG_ERROR("network", "WORLD: failed to teleport player %s (%d) to map %d (%s) because of unknown reason!",
-            player->GetName().c_str(), ObjectGuid(player->GetGUID()).GetCounter(), loc.GetMapId(), newMap ? newMap->GetMapName() : "Unknown");
+            player->GetName().c_str(), player->GetGUID().GetCounter(), loc.GetMapId(), newMap ? newMap->GetMapName() : "Unknown");
         player->ResetMap();
         player->SetMap(oldMap);
 
@@ -311,7 +311,9 @@ void WorldSession::HandleMovementOpcodes(WorldPacket& recvData)
         TC_LOG_ERROR("movement", "Player sent a move packet (%u) but is not currently moving any unit", recvData.GetOpcode());
         return;
     }
-    ASSERT(_activeMover->m_playerMovingMe == this);
+    if (!IsAuthorizedToMove(_activeMover->GetGUID(), true))
+        return;
+
     Unit* mover = _activeMover;
 #endif
 
@@ -635,14 +637,20 @@ void WorldSession::HandleCollisionHeightChangeAck(WorldPacket &recvData)
 }
 #endif
 
+Unit* WorldSession::GetAllowedActiveMover() const
+{
+    if (_activeMover && _allowedClientMove.count(_activeMover->GetGUID()) > 0)
+        return _activeMover;
+    else
+        return false;
+}
+
 void WorldSession::ResetActiveMover(bool onDelete /*= false*/)
 {
     Unit* previousMover = _activeMover;
     if (_activeMover)
-    {
-        ASSERT(_activeMover->m_playerMovingMe == this);
-        _activeMover->m_playerMovingMe = nullptr;
-    }
+        if(_activeMover->m_playerMovingMe == this)
+            _activeMover->m_playerMovingMe = nullptr;
 
     _activeMover = nullptr;
 
@@ -656,27 +664,23 @@ void WorldSession::ResetActiveMover(bool onDelete /*= false*/)
 void WorldSession::InitActiveMover(Unit* activeMover)
 {
     _activeMover = nullptr; //May have one from a previous session
-    _pendingActiveMover = activeMover->GetGUID();
     _allowedClientControl.insert(activeMover->GetGUID());
     //Client will send CMSG_SET_ACTIVE_MOVER when joining a map
 }
 
-void WorldSession::SetActiveMoverReal(Unit* activeMover)
+void WorldSession::AllowMover(Unit* mover)
 {
-    //Removing mover from other player client if any
-    if (_activeMover)
-        if (WorldSession* lastOwner = _activeMover->m_playerMovingMe)
-        {
-            ASSERT(_activeMover == lastOwner->_activeMover);
-            if (lastOwner != this)
-                lastOwner->_activeMover = nullptr;
-        }
-
-    _pendingActiveMover.Clear();
+    _allowedClientMove.insert(mover->GetGUID());
     _pendingActiveMoverSplineId = 0;
+    mover->m_playerMovingMe = this;
 }
 
-//When calling this, _pendingActiveMover needs to be already set.
+void WorldSession::DisallowMover(Unit* mover)
+{
+    _allowedClientMove.erase(mover->GetGUID());
+    ResolveAllPendingChanges();
+}
+
 //Here is the active mover sequence:
 // - Server tell the unit of his new active mover with SMSG_CLIENT_CONTROL_UPDATE 
 // - Client respond with CMSG_SET_ACTIVE_MOVER to enable this mover
@@ -689,26 +693,23 @@ void WorldSession::SetActiveMover(Unit* activeMover)
 {
     //Resolve all pending changes for this unit before taking control
     if (WorldSession* session = activeMover->GetPlayerMovingMe())
-    {
-        session->ResolveAllPendingChanges();
-        session->_activeMover = nullptr;
-    }
+        if(session != this)
+            session->DisallowMover(activeMover);
 
     _activeMover = activeMover;
-    _activeMover->m_playerMovingMe = this;
 
-    _pendingActiveMoverSplineId = activeMover->StopMovingOnCurrentPos(false); //Send spline movement
+    _pendingActiveMoverSplineId = activeMover->StopMovingOnCurrentPos(false); //Send spline movement before allowing move
     if (_pendingActiveMoverSplineId == 0)
     {
         TC_LOG_FATAL("movement", "WorldSession::SetActiveMover: player %s with pending mover %s, FAILED to start spline movement",
-            _player->GetName().c_str(), _pendingActiveMover.ToString().c_str());
+            _player->GetName().c_str(), _activeMover->GetGUID().ToString().c_str());
 
         //Unit will get stuck. Shouldn't ever happen in current impl.
         DEBUG_ASSERT(false);
     }
 
-    TC_LOG_TRACE("movement", "Received CMSG_SET_ACTIVE_MOVER for player %s with pending mover %s, now sending the spline movement (id %u)",
-        _player->GetName().c_str(), _pendingActiveMover.ToString().c_str(), _pendingActiveMoverSplineId);
+    TC_LOG_TRACE("movement", "Received CMSG_SET_ACTIVE_MOVER for player %s with pending mover %s (%s), now sending the spline movement (id %u)",
+        _player->GetName().c_str(), _activeMover->GetName().c_str(), _activeMover->GetGUID().ToString().c_str(), _pendingActiveMoverSplineId);
 }
 
 // sent by client when gaining control of a unit
@@ -723,9 +724,9 @@ void WorldSession::HandleSetActiveMoverOpcode(WorldPacket &recvData)
     if (_activeMover && _activeMover->GetGUID() == guid)
         return; //we already control this unit, ignore
 
-    if (!IsAuthorizedToMove(guid, true))
+    if (!IsAuthorizedToTakeControl(guid))
     {
-        TC_LOG_ERROR("movement", "WorldSession::HandleSetActiveMoverOpcode: The client of player %s doesn't have the permission to move this unit (GUID: %s)!", _player->GetName().c_str(), guid.ToString().c_str());
+        TC_LOG_ERROR("movement", "WorldSession::HandleSetActiveMoverOpcode: The client of player %s doesn't have the permission to control this unit (GUID: %s)!", _player->GetName().c_str(), guid.ToString().c_str());
         return;
     }
 
@@ -771,6 +772,7 @@ void WorldSession::HandleMoveNotActiveMover(WorldPacket &recvData)
         if (Unit* mover = ObjectAccessor::GetUnit(*_player, movementInfo.guid))
         {
             mover->ValidateMovementInfo(&movementInfo);
+            movementInfo.flags &= ~MOVEMENTFLAG_MASK_MOVING; //remove any moving flag, else we'll have unit rubber banding until someone else takes control of it
             mover->UpdateMovementInfo(movementInfo);
         }
         else
@@ -805,7 +807,7 @@ void WorldSession::SetClientControl(Unit* target, bool allowMove)
         if (target == _player)
             _player->SetGuidValue(PLAYER_FARSIGHT, ObjectGuid::Empty);
         else
-            _player->AddGuidValue(PLAYER_FARSIGHT, target->GetGUID());  //Setting PLAYER_FARSIGHT will trigger CMSG_FAR_SIGHT from client
+            _player->SetViewpoint(target, true); //Setting PLAYER_FARSIGHT will trigger CMSG_FAR_SIGHT from client, which will have no effect here since we already set vision at this point
     }
     else if (_player->GetGuidValue(PLAYER_FARSIGHT))
         _player->SetViewpoint(target, false);
@@ -814,12 +816,12 @@ void WorldSession::SetClientControl(Unit* target, bool allowMove)
     if (allowMove)
     {
         _allowedClientControl.insert(target->GetGUID());
-        _pendingActiveMover = target->GetGUID();
+        //from this point, client is allowed to take control of the unit using CMSG_SET_ACTIVE_MOVER, but is not yet allowed to move it
     }
     else
     {
         _allowedClientControl.erase(target->GetGUID());
-        ResolveAllPendingChanges(); //we may still have acks we need to ack, but we won't be able to do so now we've lost control of this unit
+        //from this point, client not allowed to take the unit anymore using CMSG_SET_ACTIVE_MOVER, but may still be able to move/ack it until another player actives the unit as mover
     }
 }
 
@@ -1287,20 +1289,18 @@ void PlayerMovementPendingChange::_HandleMoveKnockBackAck(WorldSession* session,
     session->anticheat->OnPlayerKnockBack(mover);
 }
 
+
+bool WorldSession::IsAuthorizedToTakeControl(ObjectGuid guid)
+{
+    return _allowedClientControl.count(guid) > 0;
+}
+
 bool WorldSession::IsAuthorizedToMove(ObjectGuid guid, bool log /*= true*/)
 {
-    if (_activeMover && (guid == _activeMover->GetGUID() && _pendingActiveMoverSplineId))
-    {
-        //we just changed to this mover, can't move until we finished the spline step
-        TC_LOG_TRACE("movement", "Tried to move/ack with unit %s from player %u, but we're still in the process of mover switching",
-            guid.ToString().c_str(), _player->GetGUID().GetCounter());
-        return false;
-    }
-
-    bool authorized = _allowedClientControl.count(guid) > 0;
+    bool authorized = _allowedClientMove.count(guid) > 0;
     if(!authorized && log)
-        TC_LOG_ERROR("movement", "Tried to move with non allowed unit %s from player %u", 
-            guid.ToString().c_str(), _player->GetGUID().GetCounter());
+        TC_LOG_ERROR("movement", "player %s (%u) tried to move with non allowed unit %s", 
+            _player->GetName().c_str(), _player->GetGUID().GetCounter(), guid.ToString().c_str());
     
     return authorized;
 }
