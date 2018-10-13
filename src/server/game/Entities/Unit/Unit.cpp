@@ -9103,7 +9103,7 @@ void Unit::StopMoving()
     init.Stop();
 }
 
-uint32 Unit::StopMovingOnCurrentPos(bool facing /*= true*/)
+uint32 Unit::StopMovingOnCurrentPos()
 {
     ClearUnitState(UNIT_STATE_MOVING);
 
@@ -9115,8 +9115,7 @@ uint32 Unit::StopMovingOnCurrentPos(bool facing /*= true*/)
     Movement::MoveSplineInit init(this);
     init.MoveTo(GetPositionX(), GetPositionY(), GetPositionZ(), false, true);
     init.SetVelocity(28.0f); //fixed velocity for simplified internal processing. Value doesn't really matter
-    if(facing)
-        init.SetFacing(GetOrientation());
+    init.SetFacing(GetOrientation());
     init.Launch();
     if (HasUnitMovementFlag(MOVEMENTFLAG_SPLINE_ENABLED))
         return movespline->GetId();

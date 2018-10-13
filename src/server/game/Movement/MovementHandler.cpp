@@ -314,6 +314,8 @@ void WorldSession::HandleMovementOpcodes(WorldPacket& recvData)
     if (!IsAuthorizedToMove(_activeMover->GetGUID(), true))
         return;
 
+    ASSERT(_activeMover->m_playerMovingMe == this);
+
     Unit* mover = _activeMover;
 #endif
 
@@ -678,6 +680,8 @@ void WorldSession::AllowMover(Unit* mover)
 void WorldSession::DisallowMover(Unit* mover)
 {
     _allowedClientMove.erase(mover->GetGUID());
+    if (mover->m_playerMovingMe == this)
+        mover->m_playerMovingMe = nullptr;
     ResolveAllPendingChanges();
 }
 
@@ -693,12 +697,13 @@ void WorldSession::SetActiveMover(Unit* activeMover)
 {
     //Resolve all pending changes for this unit before taking control
     if (WorldSession* session = activeMover->GetPlayerMovingMe())
-        if(session != this)
-            session->DisallowMover(activeMover);
+        session->DisallowMover(activeMover);
+
+    DisallowMover(activeMover);
 
     _activeMover = activeMover;
 
-    _pendingActiveMoverSplineId = activeMover->StopMovingOnCurrentPos(false); //Send spline movement before allowing move
+    _pendingActiveMoverSplineId = activeMover->StopMovingOnCurrentPos(); //Send spline movement before allowing move
     if (_pendingActiveMoverSplineId == 0)
     {
         TC_LOG_FATAL("movement", "WorldSession::SetActiveMover: player %s with pending mover %s, FAILED to start spline movement",
@@ -731,13 +736,13 @@ void WorldSession::HandleSetActiveMoverOpcode(WorldPacket &recvData)
     }
 
     Unit* mover = ObjectAccessor::GetUnit(*_player, guid);
-    if (!mover)
-        TC_LOG_ERROR("movement", "WorldSession::HandleSetActiveMoverOpcode: The client provided an invalid %s", guid.ToString().c_str());
-    else
+    if (mover)
     {
         TC_LOG_TRACE("movement", "%s: Player %s, setting unit %s as active mover",
             GetOpcodeNameForLogging(static_cast<OpcodeClient>(recvData.GetOpcode())).c_str(), _player->GetName().c_str(), mover->GetName().c_str());
     }
+    else
+        TC_LOG_ERROR("movement", "WorldSession::HandleSetActiveMoverOpcode: The client provided an invalid %s", guid.ToString().c_str());
 
     SetActiveMover(mover);
  }
@@ -1087,6 +1092,9 @@ void WorldSession::ResolveAllPendingChanges()
 {
     if (!_activeMover)
         return;
+
+    TC_LOG_TRACE("movement", "Resolve all pending change for player %s (%u) (for all controlled units)",
+       _player->GetName().c_str(), _player->GetGUID().GetCounter());
 
     while (HasPendingMovementChange())
     {
