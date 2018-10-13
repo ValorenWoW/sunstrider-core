@@ -130,7 +130,8 @@ m_timeSyncCounter(0),
 m_timeSyncTimer(0),
 m_timeSyncServer(0),
 _pendingActiveMoverSplineId(0),
-_activeMover(nullptr)
+_activeMover(nullptr),
+_releaseMoverTimeout(0)
 {
     memset(m_Tutorials, 0, sizeof(m_Tutorials));
 
@@ -512,6 +513,14 @@ bool WorldSession::Update(uint32 diff, PacketFilter& updater)
             SendTimeSync();
         else
             m_timeSyncTimer -= diff;
+    }
+
+    if (_releaseMoverTimeout && _releaseMoverTimeout > WorldGameTime::GetGameTimeMS())
+    {
+        TC_LOG_DEBUG("movement", "Player %s (%u) did not ack the mover change fast enough and was kicked",
+            _player->GetName().c_str(), _player->GetGUID().GetCounter());
+
+        KickPlayer();
     }
 
     return true;

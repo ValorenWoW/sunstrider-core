@@ -1061,6 +1061,7 @@ class TC_GAME_API WorldSession
         void SetActiveMover(Unit* activeMover);
         void DisallowMover(Unit* mover);
         void AllowMover(Unit* mover);
+        uint32 _releaseMoverTimeout; //if reached, kick player.
         /* Player Movement fields END*/
 };
 #endif
