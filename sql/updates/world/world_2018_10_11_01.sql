@@ -297,7 +297,9 @@ ADD PRIMARY KEY race1_item1_race2_item2 (race1, item1, race2, item2);
 
 ALTER TABLE player_factionchange_quests
 CHANGE alliance_id alliance_id mediumint(8) unsigned NULL FIRST,
-CHANGE horde_id horde_id mediumint(8) unsigned NULL AFTER alliance_comment;
+CHANGE alliance_comment alliance_comment varchar(100) COLLATE 'utf8_general_ci' NULL AFTER alliance_id,
+CHANGE horde_id horde_id mediumint(8) unsigned NULL AFTER alliance_comment,
+CHANGE horde_comment horde_comment varchar(100) COLLATE 'utf8_general_ci' NULL AFTER horde_id;
 UPDATE player_factionchange_quests SET alliance_id = NULL WHERE alliance_id = 0;
 UPDATE player_factionchange_quests SET horde_id = NULL WHERE horde_id = 0;
 ALTER TABLE player_factionchange_quests
