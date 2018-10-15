@@ -828,7 +828,7 @@ void WorldSession::SetClientControl(Unit* target, bool allowMove)
     {
         _allowedClientControl.erase(target->GetGUID());
         if(target == _activeMover)
-            _releaseMoverTimeout = WorldGameTime::GetGameTimeMS() + sWorld->getIntConfig(CONFIG_PENDING_MOVE_CHANGES_TIMEOUT);
+            _releaseMoverTimeout = sWorld->getIntConfig(CONFIG_PENDING_MOVE_CHANGES_TIMEOUT);
         //from this point, client not allowed to take the unit anymore using CMSG_SET_ACTIVE_MOVER, but may still be able to move/ack it until another player actives the unit as mover
     }
 }

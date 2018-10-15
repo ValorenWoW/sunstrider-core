@@ -515,12 +515,17 @@ bool WorldSession::Update(uint32 diff, PacketFilter& updater)
             m_timeSyncTimer -= diff;
     }
 
-    if (_releaseMoverTimeout && _releaseMoverTimeout > WorldGameTime::GetGameTimeMS())
-    {
-        TC_LOG_DEBUG("movement", "Player %s (%u) did not ack the mover change fast enough and was kicked",
-            _player->GetName().c_str(), _player->GetGUID().GetCounter());
+    if (_releaseMoverTimeout > 0)
+    { 
+        if (diff >= _releaseMoverTimeout)
+        {
+            TC_LOG_DEBUG("movement", "Player %s (%u) did not ack the mover change fast enough and was kicked",
+                _player->GetName().c_str(), _player->GetGUID().GetCounter());
 
-        KickPlayer();
+            KickPlayer();
+        }
+        else
+            _releaseMoverTimeout -= diff;
     }
 
     return true;
