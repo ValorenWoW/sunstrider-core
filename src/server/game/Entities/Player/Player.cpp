@@ -156,9 +156,9 @@ enum CharacterCustomizeFlags
 #endif
 // corpse reclaim times
 #define DEATH_EXPIRE_STEP (5*MINUTE)
-#define MAX_DEATH_COUNT 3
+#define MAX_DEATH_COUNT 4
 
-static uint32 constexpr copseReclaimDelay[MAX_DEATH_COUNT] = { 30, 60, 120 };
+static uint32 constexpr copseReclaimDelay[MAX_DEATH_COUNT] = {0, 30, 60, 120};
 
 //== Player ====================================================
 
