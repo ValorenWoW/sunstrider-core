@@ -11371,6 +11371,8 @@ void Unit::ValidateMovementInfo(MovementInfo* mi)
     //! Cannot fly ('flying' flag) without the 'canFly' flag active
     CHECK_FOR_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_PLAYER_FLYING) && !mi->HasMovementFlag(MOVEMENTFLAG_CAN_FLY));
 
+#ifdef TODOMOV
+    //sun: disabled for now until mover transition is finalized
     ////! Check for synchronisation between client and server with those server-controlled flags: 
     // CanFly, Hover, Waterwalking, Root (or if necessary PendingRoot), DisableGravity, CanTransitionBetweenSwimAndFly and FeatherFall
     MovementInfo oldMovementInfo = GetMovementInfo();
@@ -11389,6 +11391,7 @@ void Unit::ValidateMovementInfo(MovementInfo* mi)
 
     // If a root is pending, the unit should be falling
     CHECK_FOR_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_PENDING_ROOT) && !mi->HasMovementFlag(MOVEMENTFLAG_JUMPING_OR_FALLING));
+#endif
 
     // @todo: if the unit is falling, it should be away from the ground
 

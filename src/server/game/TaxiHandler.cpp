@@ -201,6 +201,7 @@ void WorldSession::HandleMoveSplineDoneOpcode(WorldPacket& recvData)
 
     recvData >> splineId;
 
+#ifdef TODOMOV
     if (_pendingActiveMoverSplineId == splineId)
     {
         if (IsAuthorizedToTakeControl(_activeMover->GetGUID()))
@@ -217,6 +218,7 @@ void WorldSession::HandleMoveSplineDoneOpcode(WorldPacket& recvData)
 
         return;
     }
+#endif
 
     // in taxi flight packet received in 2 case:
     // 1) end taxi path in far (multi-node) flight

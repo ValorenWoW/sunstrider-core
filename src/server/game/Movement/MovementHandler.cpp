@@ -651,8 +651,11 @@ void WorldSession::ResetActiveMover(bool onDelete /*= false*/)
 {
     Unit* previousMover = _activeMover;
     if (_activeMover)
-        if(_activeMover->m_playerMovingMe == this)
+        if (_activeMover->m_playerMovingMe == this)
+        {
             _activeMover->m_playerMovingMe = nullptr;
+            _activeMover->RemoveUnitMovementFlag(MOVEMENTFLAG_MASK_MOVING); // + send heartbeat?
+        }
 
     _activeMover = nullptr;
 
@@ -703,6 +706,7 @@ void WorldSession::SetActiveMover(Unit* activeMover)
 
     _activeMover = activeMover;
 
+#ifdef TODOMOV
     _pendingActiveMoverSplineId = activeMover->StopMovingOnCurrentPos(); //Send spline movement before allowing move
     if (_pendingActiveMoverSplineId == 0)
     {
@@ -715,8 +719,22 @@ void WorldSession::SetActiveMover(Unit* activeMover)
 
     TC_LOG_TRACE("movement", "Received CMSG_SET_ACTIVE_MOVER for player %s with pending mover %s (%s), now sending the spline movement (id %u)",
         _player->GetName().c_str(), _activeMover->GetName().c_str(), _activeMover->GetGUID().ToString().c_str(), _pendingActiveMoverSplineId);
+#else
+    if (IsAuthorizedToTakeControl(_activeMover->GetGUID()))
+    {
+        AllowMover(_activeMover);
+        TC_LOG_TRACE("movement", "WorldSession::SetActiveMover: Enabling move of unit %s (%s) to player %s (%s)",
+            _activeMover->GetName().c_str(), _activeMover->GetGUID().ToString().c_str(), _player->GetName().c_str(), _player->GetName().c_str());
+    }
+    else
+    {
+        TC_LOG_ERROR("movement", "WorldSession::SetActiveMover: Failed enabling move of unit %s (%s) to player %s (%s), pending spline id is correct but player is not allowed to take control anymore",
+            _activeMover->GetName().c_str(), _activeMover->GetGUID().ToString().c_str(), _player->GetName().c_str(), _player->GetName().c_str());
+    }
+#endif
 }
 
+//CMSG_SET_ACTIVE_MOVER
 // sent by client when gaining control of a unit
 void WorldSession::HandleSetActiveMoverOpcode(WorldPacket &recvData)
 {
@@ -735,20 +753,28 @@ void WorldSession::HandleSetActiveMoverOpcode(WorldPacket &recvData)
         return;
     }
 
-    Unit* mover = ObjectAccessor::GetUnit(*_player, guid);
-    if (mover)
-    {
-        TC_LOG_TRACE("movement", "%s: Player %s, setting unit %s as active mover",
-            GetOpcodeNameForLogging(static_cast<OpcodeClient>(recvData.GetOpcode())).c_str(), _player->GetName().c_str(), mover->GetName().c_str());
-    }
-    else
-        TC_LOG_ERROR("movement", "WorldSession::HandleSetActiveMoverOpcode: The client provided an invalid %s", guid.ToString().c_str());
+    _releaseMoverTimeout = 0;
 
+    Unit* mover = ObjectAccessor::GetUnit(*_player, guid);
+    if (!mover)
+    {
+        TC_LOG_ERROR("movement", "WorldSession::HandleSetActiveMoverOpcode: The client provided an invalid %s (unit may also have just been removed for world)", guid.ToString().c_str());
+        return;
+    }
+
+    TC_LOG_TRACE("movement", "%s: Player %s, setting unit %s as active mover",
+        GetOpcodeNameForLogging(static_cast<OpcodeClient>(recvData.GetOpcode())).c_str(), _player->GetName().c_str(), mover->GetName().c_str());
+
+#ifndef LICH_KING
+    //On LK, client may have multiple active movers
+    ResetActiveMover();
+#endif
     SetActiveMover(mover);
  }
 
 //CMSG_MOVE_NOT_ACTIVE_MOVER
-//sent by client when loosing control of a unit
+//sent by client when loosing control of a unit.
+//Client may send CMSG_SET_ACTIVE_MOVER to another unit instead
 void WorldSession::HandleMoveNotActiveMover(WorldPacket &recvData)
 {
     //TC_LOG_DEBUG("network", "WORLD: Recvd CMSG_MOVE_NOT_ACTIVE_MOVER");

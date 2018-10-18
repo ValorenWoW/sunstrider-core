@@ -1628,7 +1628,7 @@ public:
                     i += (fieldSize - 1); //this will skip next field for UPDATE_FIELD_TYPE_LONG
 
                 handler->PSendSysMessage("%s", stream.str().c_str());
-                TC_LOG_DEBUG("snapshot", "%", stream.str().c_str());
+                TC_LOG_DEBUG("snapshot", "%s", stream.str().c_str());
             }
         }
         else {
