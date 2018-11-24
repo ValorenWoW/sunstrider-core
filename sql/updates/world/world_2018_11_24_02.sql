@@ -1,3 +1,6 @@
+-- Patch 2.0
+UPDATE `areatrigger_teleport` SET `patch`=11 WHERE  `id`=4535 AND `patch`=0;
+
 -- Patch 2.1
 DELETE FROM `game_event_creature` WHERE  `guid`=7426 AND `event`=65;
 DELETE FROM `game_event_creature` WHERE  `guid`=78133 AND `event`=65;
@@ -28,6 +31,12 @@ UPDATE `quest_template` SET `patch`=12 WHERE `entry`=10984 AND `patch`=0;
 
 -- Set correct patch_min for Skettis - Sha'tari Skyguard
 UPDATE `game_event` SET `patch_min`=12 WHERE  `entry`=68;
+
+-- Set correct patch_min for Ogri'la
+UPDATE `game_event` SET `patch_min`=12 WHERE  `entry`=71;
+
+-- Black Temple opened in 2.1
+UPDATE `areatrigger_teleport` SET `patch`=12 WHERE  `id`=4598 AND `patch`=0;
 
 -- Patch 2.2
 DELETE FROM `game_event_creature` WHERE  `guid`=6715 AND `event`=76;
@@ -109,6 +118,8 @@ UPDATE `quest_template` SET `patch`=14 WHERE `guid`=44246 AND `patch`=0;
 
 DELETE FROM `game_event` WHERE `entry`=77;
 
+UPDATE `areatrigger_teleport` SET `patch`=14 WHERE  `id`=4738 AND `patch`=0;
+
 -- Patch 2.4
 DELETE FROM `game_event_creature` WHERE  `guid`=1866 AND `event`=67;
 DELETE FROM `game_event_creature` WHERE  `guid`=43249 AND `event`=67;
@@ -159,3 +170,8 @@ UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=45;
 UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=46;
 UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=48;
 UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=47;
+
+-- Sunwell Plateau (Entrance)
+UPDATE `areatrigger_teleport` SET `patch`=15 WHERE  `id`=4889 AND `patch`=0;
+-- Magisters' Terrace (Entrance)
+UPDATE `areatrigger_teleport` SET `patch`=15 WHERE  `id`=4887 AND `patch`=0;

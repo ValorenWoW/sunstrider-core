@@ -4,6 +4,9 @@ UPDATE `creature` SET `patch_min`=12 WHERE `spawnID`=310980;
 
 UPDATE `game_event` SET `patch_min`=12 WHERE  `entry`=72;
 
+-- Ruins of Lordaeron (arena) added in 2.1
+UPDATE `battleground_template` SET `patch`=12 WHERE  `id`=8 AND `patch`=0;
+
 -- Season 2 - Patch 2.2
 DELETE FROM `game_event_creature` WHERE  `guid`=18 AND `event`=73;
 DELETE FROM `game_event_creature` WHERE  `guid`=310979 AND `event`=73;
