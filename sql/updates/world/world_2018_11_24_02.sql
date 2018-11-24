@@ -73,8 +73,38 @@ UPDATE `creature` SET `patch_min`=14 WHERE `spawnID`=93104;
 DELETE FROM `game_event_gameobject` WHERE  `guid`=49870 AND `event`=66;
 DELETE FROM `game_event_gameobject` WHERE  `guid`=49871 AND `event`=66;
 
-UPDATE `quest_template` SET `patch`=14 WHERE `entry`=49870 AND `patch`=0;
-UPDATE `quest_template` SET `patch`=14 WHERE `entry`=49871 AND `patch`=0;
+UPDATE `quest_template` SET `patch`=14 WHERE `guid`=49870 AND `patch`=0;
+UPDATE `quest_template` SET `patch`=14 WHERE `guid`=49871 AND `patch`=0;
+
+-- Zul'aman
+DELETE FROM `game_event_creature` WHERE  `guid`=2054 AND `event`=77;
+DELETE FROM `game_event_creature` WHERE  `guid`=68182 AND `event`=77;
+DELETE FROM `game_event_creature` WHERE  `guid`=68183 AND `event`=77;
+DELETE FROM `game_event_creature` WHERE  `guid`=68184 AND `event`=77;
+DELETE FROM `game_event_creature` WHERE  `guid`=90318 AND `event`=77;
+DELETE FROM `game_event_creature` WHERE  `guid`=93080 AND `event`=77;
+DELETE FROM `game_event_creature` WHERE  `guid`=93081 AND `event`=77;
+DELETE FROM `game_event_creature` WHERE  `guid`=93082 AND `event`=77;
+DELETE FROM `game_event_creature` WHERE  `guid`=93084 AND `event`=77;
+DELETE FROM `game_event_creature` WHERE  `guid`=93085 AND `event`=77;
+DELETE FROM `game_event_creature` WHERE  `guid`=95176 AND `event`=77;
+
+UPDATE `creature` SET `patch_min`=14 WHERE `spawnID`=2054;
+UPDATE `creature` SET `patch_min`=14 WHERE `spawnID`=68182;
+UPDATE `creature` SET `patch_min`=14 WHERE `spawnID`=68183;
+UPDATE `creature` SET `patch_min`=14 WHERE `spawnID`=68184;
+UPDATE `creature` SET `patch_min`=14 WHERE `spawnID`=90318;
+UPDATE `creature` SET `patch_min`=14 WHERE `spawnID`=93080;
+UPDATE `creature` SET `patch_min`=14 WHERE `spawnID`=93081;
+UPDATE `creature` SET `patch_min`=14 WHERE `spawnID`=93082;
+UPDATE `creature` SET `patch_min`=14 WHERE `spawnID`=93084;
+UPDATE `creature` SET `patch_min`=14 WHERE `spawnID`=93085;
+UPDATE `creature` SET `patch_min`=14 WHERE `spawnID`=95176;
+
+DELETE FROM `game_event_gameobject` WHERE  `guid`=44246 AND `event`=77;
+UPDATE `quest_template` SET `patch`=14 WHERE `guid`=44246 AND `patch`=0;
+
+DELETE FROM `game_event` WHERE `entry`=77;
 
 -- Patch 2.4
 DELETE FROM `game_event_creature` WHERE  `guid`=1866 AND `event`=67;

@@ -28,7 +28,7 @@ UPDATE `creature` SET `patch_min`=14 WHERE `spawnID`=22984;
 UPDATE `creature` SET `patch_min`=14 WHERE `spawnID`=67189;
 UPDATE `creature` SET `patch_min`=14 WHERE `spawnID`=70192;
 UPDATE `creature` SET `patch_min`=14 WHERE `spawnID`=95373;
-UPDATE `creature` SET `patch_max`=14 WHERE `spawnID`=310979;
+UPDATE `creature` SET `patch_max`=14 WHERE `spawnID`=310979; -- not spawned after 2.3
 UPDATE `creature` SET `patch_min`=14 WHERE `spawnID`=311132;
 
 -- Season 4 - Patch 2.4
