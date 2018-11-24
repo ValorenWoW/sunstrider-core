@@ -26,6 +26,9 @@ UPDATE `quest_template` SET `patch`=12 WHERE `entry`=10971 AND `patch`=0;
 UPDATE `quest_template` SET `patch`=12 WHERE `entry`=10973 AND `patch`=0;
 UPDATE `quest_template` SET `patch`=12 WHERE `entry`=10984 AND `patch`=0;
 
+-- Set correct patch_min for Skettis - Sha'tari Skyguard
+UPDATE `game_event` SET `patch_min`=12 WHERE  `entry`=68;
+
 -- Patch 2.2
 DELETE FROM `game_event_creature` WHERE  `guid`=6715 AND `event`=76;
 DELETE FROM `game_event_creature` WHERE  `guid`=68077 AND `event`=76;
@@ -139,3 +142,20 @@ UPDATE `creature` SET `patch_min`=15 WHERE `spawnID`=95294;
 UPDATE `creature` SET `patch_min`=15 WHERE `spawnID`=95362;
 UPDATE `creature` SET `patch_min`=15 WHERE `spawnID`=311004;
 UPDATE `creature` SET `patch_min`=15 WHERE `spawnID`=311005;
+
+-- Set patch min for Shattered Sun Offensive story line
+UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=35;
+UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=36;
+UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=37;
+UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=38;
+UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=39;
+UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=40;
+UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=41;
+UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=42;
+UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=43;
+UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=44;
+UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=49;
+UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=45;
+UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=46;
+UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=48;
+UPDATE `game_event` SET `patch_min`=15 WHERE  `entry`=47;
