@@ -463,6 +463,32 @@ enum RealmZone
     REALM_ZONE_CN9           = 29                           // basic-Latin at create, any at login
 };
 
+enum WowPatch
+{
+    WOW_PATCH_120   = 0,
+    WOW_PATCH_130   = 1,
+    WOW_PATCH_140   = 2,
+    WOW_PATCH_150   = 3,
+    WOW_PATCH_160   = 4,
+    WOW_PATCH_170   = 5,
+    WOW_PATCH_180   = 6,
+    WOW_PATCH_190   = 7,
+    WOW_PATCH_1100  = 8,
+    WOW_PATCH_1110  = 9,
+    WOW_PATCH_1120  = 10,
+    WOW_PATCH_200   = 11,
+    WOW_PATCH_210   = 12,
+    WOW_PATCH_220   = 13,
+    WOW_PATCH_230   = 14,
+    WOW_PATCH_240   = 15,
+    WOW_PATCH_300   = 16,
+    WOW_PATCH_310   = 17,
+    WOW_PATCH_320   = 18,
+    WOW_PATCH_322   = 19,
+    WOW_PATCH_330   = 20,
+    WOW_PATCH_335   = 21
+};
+
 struct AutoAnnounceMessage
 {
     std::string message;
@@ -617,6 +643,10 @@ class TC_GAME_API World
             uint32 lvl = getConfig(CONFIG_MAX_PLAYER_LEVEL);
             return lvl > 60 ? 300 + ((lvl - 60) * 75) / 10 : lvl*5;
         }
+
+        /// Get current server's WoW Patch
+        uint8 GetWowPatch() const { return m_wowPatch; }
+        char* const GetPatchName() const;
 
         void SetInitialWorldSettings();
         void LoadConfigSettings(bool reload = false);
@@ -795,6 +825,7 @@ class TC_GAME_API World
         float rate_values[MAX_RATES];
         int32 m_configs[CONFIG_VALUE_COUNT];
         int32 m_playerLimit;
+        uint8 m_wowPatch;
         AccountTypes m_allowedSecurityLevel;
         LocaleConstant m_defaultDbcLocale;                     // from config for one from loaded DBC locales
         uint32 m_availableDbcLocaleMask;                       // by loaded DBC

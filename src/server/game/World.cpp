@@ -110,6 +110,7 @@ World::World()
     m_maxActiveSessionCount = 0;
     m_maxQueuedSessionCount = 0;
     m_NextDailyQuestReset = 0;
+    m_wowPatch = WOW_PATCH_240; // default is patch 2.4.3
 
     m_defaultDbcLocale = LOCALE_enUS;
     m_availableDbcLocaleMask = 0;
@@ -487,6 +488,9 @@ void World::LoadConfigSettings(bool reload)
 
     // load update time related configs
     sWorldUpdateTime.LoadFromConfig();
+
+    /// Read current wow patch version
+    m_wowPatch = sConfigMgr->GetIntDefault("WowPatch", WOW_PATCH_240);
 
     ///- Read the player limit from the config file
     SetPlayerLimit(sConfigMgr->GetIntDefault("PlayerLimit", DEFAULT_PLAYER_LIMIT));
@@ -1372,6 +1376,62 @@ void World::LoadConfigSettings(bool reload)
     m_configs[CONFIG_CACHE_DATA_QUERIES] = sConfigMgr->GetBoolDefault("CacheDataQueries", true);
 }
 
+/// Get Server Patch
+char* const World::GetPatchName() const
+{
+    switch (GetWowPatch())
+    {
+        // Original game aka Vanilla / Classic
+    case WOW_PATCH_120:
+        return "Patch 1.2: Mysteries of Maraudon";
+    case WOW_PATCH_130:
+        return "Patch 1.3: Ruins of the Dire Maul";
+    case WOW_PATCH_140:
+        return "Patch 1.4: The Call to War";
+    case WOW_PATCH_150:
+        return "Patch 1.5: Battlegrounds";
+    case WOW_PATCH_160:
+        return "Patch 1.6: Assault on Blackwing Lair";
+    case WOW_PATCH_170:
+        return "Patch 1.7: Rise of the Blood God";
+    case WOW_PATCH_180:
+        return "Patch 1.8: Dragons of Nightmare";
+    case WOW_PATCH_190:
+        return "Patch 1.9: The Gates of Ahn'Qiraj";
+    case WOW_PATCH_1100:
+        return "Patch 1.10: Storms of Azeroth";
+    case WOW_PATCH_1110:
+        return "Patch 1.11: Shadow of the Necropolis";
+    case WOW_PATCH_1120:
+        return "Patch 1.12: Drums of War";
+        // Burning Crusade
+    case WOW_PATCH_200:
+        return "Patch 2.0: Before the Storm";
+    case WOW_PATCH_210:
+        return "Patch 2.1: The Black Temple";
+    case WOW_PATCH_220:
+        return "Patch 2.2: Voice Chat";
+    case WOW_PATCH_230:
+        return "Patch 2.3: The Gods of Zul'Aman";
+    case WOW_PATCH_240:
+        return "Patch 2.4: Fury of the Sunwell";
+        // Wrath of the Lich King
+    case WOW_PATCH_300:
+        return "Patch 3.0.0: Echoes of Doom";
+    case WOW_PATCH_310:
+        return "Patch 3.1.0: Secrets of Ulduar";
+    case WOW_PATCH_320:
+        return "Patch 3.2.0: Call of the Crusade";
+    case WOW_PATCH_322:
+        return "Patch 3.2.2: Call of the Crusade"; // Release of Onyxia again
+    case WOW_PATCH_330:
+        return "Patch 3.3.0: Fall of the Lich King";
+    case WOW_PATCH_335:
+        return "Patch 3.3.5: Assault on the Ruby Sanctum";
+    }
+    return "Invalid Patch!";
+}
+
 /// Initialize the World
 void World::SetInitialWorldSettings()
 {
@@ -1920,6 +1980,12 @@ void World::SetInitialWorldSettings()
     #ifdef PLAYERBOT
     sPlayerbotAIConfig.Initialize();
     #endif
+
+    TC_LOG_INFO("server.loading", "");
+    TC_LOG_INFO("server.loading", "==========================================================");
+    TC_LOG_INFO("server.loading", "Current content is set to %s.", GetPatchName());
+    TC_LOG_INFO("server.loading", "==========================================================");
+    TC_LOG_INFO("server.loading", "");
 
     uint32 serverStartedTime = GetMSTimeDiffToNow(serverStartingTime);
     TC_LOG_INFO("server.loading","World initialized in %u.%u seconds.", (serverStartedTime / 1000), (serverStartedTime % 1000));
@@ -3076,7 +3142,7 @@ void World::LogPhishing(uint32 src, uint32 dst, std::string msg)
 
 void World::LoadMotdAndTwitter()
 {
-    SetMotd(sConfigMgr->GetStringDefault("Motd", "Welcome to Sunstrider!"));
+    SetMotd(sConfigMgr->GetStringDefault("Motd", "Welcome to Sunstrider!") + std::string("\n") + std::string(GetPatchName()) + std::string(" is now live!"));
 }
 
 void World::LoadAutoAnnounce()
