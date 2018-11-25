@@ -1,5 +1,4 @@
 -- Creatures
-DELETE FROM creature_formations WHERE leaderGUID = memberGUID;
 UPDATE creature_entry SET spawnID = spawnID + 1000000;
 UPDATE smart_scripts SET entryorguid = entryorguid - 1000000 WHERE entryorguid < 0 AND source_type = 0;
 UPDATE smart_scripts SET target_param1 = target_param1 + 1000000 WHERE target_type = 10;
