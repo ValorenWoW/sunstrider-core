@@ -1960,7 +1960,7 @@ void World::SetInitialWorldSettings()
 
     TC_LOG_INFO("server.loading", "");
     TC_LOG_INFO("server.loading", "==========================================================");
-    TC_LOG_INFO("server.loading", "Current content is set to %s.", GetPatchName());
+    TC_LOG_INFO("server.loading", "Current content is set to %s.", GetPatchName().c_str());
     TC_LOG_INFO("server.loading", "==========================================================");
     TC_LOG_INFO("server.loading", "");
 
