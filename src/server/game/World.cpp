@@ -1381,29 +1381,6 @@ char* const World::GetPatchName() const
 {
     switch (GetWowPatch())
     {
-        // Original game aka Vanilla / Classic
-    case WOW_PATCH_120:
-        return "Patch 1.2: Mysteries of Maraudon";
-    case WOW_PATCH_130:
-        return "Patch 1.3: Ruins of the Dire Maul";
-    case WOW_PATCH_140:
-        return "Patch 1.4: The Call to War";
-    case WOW_PATCH_150:
-        return "Patch 1.5: Battlegrounds";
-    case WOW_PATCH_160:
-        return "Patch 1.6: Assault on Blackwing Lair";
-    case WOW_PATCH_170:
-        return "Patch 1.7: Rise of the Blood God";
-    case WOW_PATCH_180:
-        return "Patch 1.8: Dragons of Nightmare";
-    case WOW_PATCH_190:
-        return "Patch 1.9: The Gates of Ahn'Qiraj";
-    case WOW_PATCH_1100:
-        return "Patch 1.10: Storms of Azeroth";
-    case WOW_PATCH_1110:
-        return "Patch 1.11: Shadow of the Necropolis";
-    case WOW_PATCH_1120:
-        return "Patch 1.12: Drums of War";
         // Burning Crusade
     case WOW_PATCH_200:
         return "Patch 2.0: Before the Storm";

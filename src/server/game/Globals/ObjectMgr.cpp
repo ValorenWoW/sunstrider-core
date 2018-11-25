@@ -1288,7 +1288,7 @@ void ObjectMgr::LoadCreatures()
         if ((patch_min > patch_max) || (patch_max > WOW_PATCH_335))
         {
             TC_LOG_ERROR("sql.sql", "Table `creature` spawnId %u has invalid values patch_min=%u, patch_max=%u.", spawnId, patch_min, patch_max);
-            patch_min = WOW_PATCH_120;
+            patch_min = WOW_PATCH_200;
             patch_max = WOW_PATCH_335;
         }
 
@@ -1434,7 +1434,7 @@ void ObjectMgr::LoadGameObjects()
         if ((patch_min > patch_max) || (patch_max > WOW_PATCH_335))
         {
             TC_LOG_ERROR("sql.sql", "Table `gameobject` GUID %u (entry %u) has invalid values patch_min=%u, patch_max=%u.", guid, entry, patch_min, patch_max);
-            patch_min = WOW_PATCH_120;
+            patch_min = WOW_PATCH_200;
             patch_max = WOW_PATCH_335;
         }
 

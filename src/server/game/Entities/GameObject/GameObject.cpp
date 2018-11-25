@@ -1006,7 +1006,7 @@ void GameObject::SaveToDB(uint32 mapid, uint8 spawnMask)
         << m_respawnDelayTime << ", "
         << GetGoAnimProgress() << ", "
         << GetGoState() << ","
-        << WOW_PATCH_120 << ","
+        << WOW_PATCH_200 << ","
         << WOW_PATCH_335 << ")";
 
     SQLTransaction trans = WorldDatabase.BeginTransaction();

@@ -465,28 +465,17 @@ enum RealmZone
 
 enum WowPatch
 {
-    WOW_PATCH_120   = 0,
-    WOW_PATCH_130   = 1,
-    WOW_PATCH_140   = 2,
-    WOW_PATCH_150   = 3,
-    WOW_PATCH_160   = 4,
-    WOW_PATCH_170   = 5,
-    WOW_PATCH_180   = 6,
-    WOW_PATCH_190   = 7,
-    WOW_PATCH_1100  = 8,
-    WOW_PATCH_1110  = 9,
-    WOW_PATCH_1120  = 10,
-    WOW_PATCH_200   = 11,
-    WOW_PATCH_210   = 12,
-    WOW_PATCH_220   = 13,
-    WOW_PATCH_230   = 14,
-    WOW_PATCH_240   = 15,
-    WOW_PATCH_300   = 16,
-    WOW_PATCH_310   = 17,
-    WOW_PATCH_320   = 18,
-    WOW_PATCH_322   = 19,
-    WOW_PATCH_330   = 20,
-    WOW_PATCH_335   = 21
+    WOW_PATCH_200   = 0,
+    WOW_PATCH_210   = 1,
+    WOW_PATCH_220   = 2,
+    WOW_PATCH_230   = 3,
+    WOW_PATCH_240   = 4,
+    WOW_PATCH_300   = 5,
+    WOW_PATCH_310   = 6,
+    WOW_PATCH_320   = 7,
+    WOW_PATCH_322   = 8,
+    WOW_PATCH_330   = 9,
+    WOW_PATCH_335   = 10
 };
 
 struct AutoAnnounceMessage
