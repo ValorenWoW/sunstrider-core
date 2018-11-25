@@ -2330,12 +2330,12 @@ bool ConditionMgr::isConditionTypeValid(Condition* cond) const
         {
             if (cond->ConditionValue1 > 10)
             {
-                TC_LOG_ERROR("sql.sql", "Patch condition %u has an invalid value in value1 (must be 0..21), skipping.", cond->ToString(true).c_str(), cond->ConditionValue1);
+                TC_LOG_ERROR("sql.sql", "Patch condition %u has an invalid value in value1 (must be 0..10), skipping.", cond->ToString(true).c_str(), cond->ConditionValue1);
                 return false;
             }
             if (cond->ConditionValue2 > 0)
             {
-                TC_LOG_ERROR("sql.sql", "Patch condition %u has invalid argument %u (must be 0..2), skipped.", cond->ToString(true).c_str(), cond->ConditionValue2);
+                TC_LOG_ERROR("sql.sql", "Patch condition %u has invalid argument %u (must be 0..10), skipped.", cond->ToString(true).c_str(), cond->ConditionValue2);
                 return false;
             }
             break;
