@@ -7358,7 +7358,8 @@ void ObjectMgr::LoadVendors()
 
     std::set<uint32> skip_vendors;
 
-    QueryResult result = WorldDatabase.PQuery("SELECT entry, item, maxcount, incrtime, ExtendedCost FROM npc_vendor WHERE (item NOT IN (SELECT entry FROM forbidden_items WHERE (AfterOrBefore = 0 && patch <= %u) || (AfterOrBefore = 1 && patch >= %u)))", sWorld->GetWowPatch(), sWorld->GetWowPatch());
+    QueryResult result = WorldDatabase.PQuery("SELECT entry, item, maxcount, incrtime, ExtendedCost "
+                                              "FROM npc_vendor t1 WHERE patch=(SELECT max(patch) FROM creature_addon t2 WHERE t1.entry = t2.entry && patch <= %u)", sWorld->GetWowPatch());
 
     if( !result )
     {
