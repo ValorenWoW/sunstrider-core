@@ -371,11 +371,11 @@ void GameEventMgr::LoadFromDB()
         uint8 patch_max         = fields[9].GetUInt8();
         bool disable = false;
 
-        if ((patch_min > patch_max) || (patch_max > WOW_PATCH_335))
+        if ((patch_min > patch_max) || (patch_max > WOW_PATCH_MAX))
         {
             TC_LOG_ERROR("sql.sql", "Table `game_event` game event id (%i) has invalid values patch_min=%u, patch_max=%u.", event_id, patch_min, patch_max);
-            patch_min = 0;
-            patch_max = WOW_PATCH_335;
+            patch_min = WOW_PATCH_MIN;
+            patch_max = WOW_PATCH_MAX;
         }
 
         if (!((sWorld->GetWowPatch() >= patch_min) && (sWorld->GetWowPatch() <= patch_max)) || disabled == 1)

@@ -465,6 +465,7 @@ enum RealmZone
 
 enum WowPatch
 {
+    WOW_PATCH_MIN   = 0,
     WOW_PATCH_200   = 0,
     WOW_PATCH_210   = 1,
     WOW_PATCH_220   = 2,
@@ -475,7 +476,8 @@ enum WowPatch
     WOW_PATCH_320   = 7,
     WOW_PATCH_322   = 8,
     WOW_PATCH_330   = 9,
-    WOW_PATCH_335   = 10
+    WOW_PATCH_335   = 10,
+    WOW_PATCH_MAX   = 10,
 };
 
 struct AutoAnnounceMessage

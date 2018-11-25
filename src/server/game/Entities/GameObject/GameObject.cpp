@@ -1006,8 +1006,8 @@ void GameObject::SaveToDB(uint32 mapid, uint8 spawnMask)
         << m_respawnDelayTime << ", "
         << GetGoAnimProgress() << ", "
         << GetGoState() << ","
-        << WOW_PATCH_200 << ","
-        << WOW_PATCH_335 << ")";
+        << WOW_PATCH_MIN << ","
+        << WOW_PATCH_MAX << ")";
 
     SQLTransaction trans = WorldDatabase.BeginTransaction();
     trans->PAppend("DELETE FROM gameobject WHERE guid = '%u'", m_spawnId);

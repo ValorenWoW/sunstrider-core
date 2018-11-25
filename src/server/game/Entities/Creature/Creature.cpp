@@ -1514,8 +1514,8 @@ void Creature::SaveToDB(uint32 mapid, uint8 spawnMask)
         << GetPower(POWER_MANA) << ","                      //curmana
         << GetDefaultMovementType() << ","                  //default movement generator type
         << m_creaturePoolId << ","                          //creature pool id
-        << WOW_PATCH_200 << ","                             //patch min
-        << WOW_PATCH_335 << ")";                            //patch max
+        << WOW_PATCH_MIN << ","                             //patch min
+        << WOW_PATCH_MAX << ")";                            //patch max
 
     trans->Append( ss.str( ).c_str( ) );
 
