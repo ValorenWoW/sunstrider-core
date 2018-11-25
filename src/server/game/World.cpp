@@ -3119,7 +3119,7 @@ void World::LogPhishing(uint32 src, uint32 dst, std::string msg)
 
 void World::LoadMotdAndTwitter()
 {
-    SetMotd(sConfigMgr->GetStringDefault("Motd", "Welcome to Sunstrider!") + std::string("\n") + std::string(GetPatchName().c_str()) + std::string(" is now live!"));
+    SetMotd(sConfigMgr->GetStringDefault("Motd", "Welcome to Sunstrider!") + std::string("\n") + std::string(GetPatchName()) + std::string(" is now live!"));
 }
 
 void World::LoadAutoAnnounce()
