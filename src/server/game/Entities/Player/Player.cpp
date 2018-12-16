@@ -16970,7 +16970,7 @@ bool Player::_LoadHomeBind(PreparedQueryResult result)
 
         // accept saved data only for valid position (and non instanceable)
         if( MapManager::IsValidMapCoord(m_homebindMapId,m_homebindX,m_homebindY,m_homebindZ) &&
-            !sMapStore.LookupEntry(m_homebindMapId)->Instanceable() && GetSession()->Expansion() >= !sMapStore.LookupEntry(m_homebindMapId)->Expansion())
+            !sMapStore.LookupEntry(m_homebindMapId)->Instanceable() && GetSession()->Expansion() >= sMapStore.LookupEntry(m_homebindMapId)->Expansion())
         {
             ok = true;
         }
