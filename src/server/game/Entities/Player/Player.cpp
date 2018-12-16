@@ -16968,9 +16968,11 @@ bool Player::_LoadHomeBind(PreparedQueryResult result)
         m_homebindY = fields[3].GetFloat();
         m_homebindZ = fields[4].GetFloat();
 
+        MapEntry const* bindMapEntry = sMapStore.LookupEntry(m_homebindMapId);
+
         // accept saved data only for valid position (and non instanceable)
-        if( MapManager::IsValidMapCoord(m_homebindMapId,m_homebindX,m_homebindY,m_homebindZ) &&
-            !sMapStore.LookupEntry(m_homebindMapId)->Instanceable() && GetSession()->Expansion() >= sMapStore.LookupEntry(m_homebindMapId)->Expansion())
+        if( MapManager::IsValidMapCoord(m_homebindMapId,m_homebindX,m_homebindY,m_homebindZ) && bindMapEntry && 
+            !bindMapEntry->Instanceable() && GetSession()->Expansion() >= bindMapEntry->Expansion())
         {
             ok = true;
         }
