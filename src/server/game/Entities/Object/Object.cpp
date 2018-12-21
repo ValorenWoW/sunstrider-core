@@ -767,6 +767,7 @@ WorldObject::WorldObject(bool isWorldObject) :
     mSemaphoreTeleport(false),
     m_isActive(false),
     m_isFarVisible(false),
+    m_isLargeObject(false),
     m_isTempWorldObject(false),
     m_transport(nullptr),
     m_phaseMask(PHASEMASK_NORMAL),
@@ -844,6 +845,14 @@ void WorldObject::SetFarVisible(bool on)
         return;
 
     m_isFarVisible = on;
+}
+
+void WorldObject::SetLargeObject(bool on)
+{
+    if (GetTypeId() == TYPEID_PLAYER)
+        return;
+
+    m_isLargeObject = on;
 }
 
 void WorldObject::CleanupsBeforeDelete(bool /*finalCleanup*/)
@@ -1499,17 +1508,21 @@ float WorldObject::GetVisibilityRange() const
 {
     if (IsFarVisible() && !ToPlayer())
         return MAX_VISIBILITY_DISTANCE;
+    else if (IsLargeObject() && !ToPlayer())
+        return SIGHT_LARGE;
     else if (GetTypeId() == TYPEID_GAMEOBJECT)
+        return GetMap()->GetVisibilityRange() + VISIBILITY_INC_FOR_GOBJECTS;
+    else
+        return GetMap()->GetVisibilityRange();
+    //+ Todo: creatures like the hellfire peninsula walker?
+
 #ifdef LICH_KING
+    else if (GetTypeId() == TYPEID_GAMEOBJECT)
         return IsInWintergrasp() ? VISIBILITY_DIST_WINTERGRASP + VISIBILITY_INC_FOR_GOBJECTS : GetMap()->GetVisibilityRange() + VISIBILITY_INC_FOR_GOBJECTS;
     else
         return IsInWintergrasp() ? VISIBILITY_DIST_WINTERGRASP : GetMap()->GetVisibilityRange();
 #else
-        return GetMap()->GetVisibilityRange() + VISIBILITY_INC_FOR_GOBJECTS;
-    else
-        return GetMap()->GetVisibilityRange();
 #endif
-    //+ Todo: creatures like the hellfire peninsula walker?
 }
 
 float WorldObject::GetGridActivationRange() const
@@ -1527,7 +1540,6 @@ float WorldObject::GetGridActivationRange() const
     return 0.0f;
 }
 
-
 float WorldObject::GetSightRange(const WorldObject* target) const
 {
     if (ToUnit())
@@ -1536,6 +1548,8 @@ float WorldObject::GetSightRange(const WorldObject* target) const
         {
             if (target && target->IsFarVisible() && !target->ToPlayer())
                 return MAX_VISIBILITY_DISTANCE;
+            else if (target && target->IsLargeObject() && !target->ToPlayer())
+                return SIGHT_LARGE;
             else if (ToPlayer()->GetCinematicMgr()->IsOnCinematic())
                 return MAX_VISIBILITY_DISTANCE;
             else
@@ -1551,6 +1565,8 @@ float WorldObject::GetSightRange(const WorldObject* target) const
     {
         return GetMap()->GetVisibilityRange();
     }
+
+
 
     return 0.0f;
 }
