@@ -1566,8 +1566,6 @@ float WorldObject::GetSightRange(const WorldObject* target) const
         return GetMap()->GetVisibilityRange();
     }
 
-
-
     return 0.0f;
 }
 
