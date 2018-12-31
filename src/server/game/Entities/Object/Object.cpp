@@ -38,6 +38,16 @@
 #include "TemporarySummon.h"
 #include "DynamicTree.h"
 
+constexpr float VisibilityDistances[AsUnderlyingType(VisibilityDistanceType::Max)] =
+{
+    DEFAULT_VISIBILITY_DISTANCE,
+    VISIBILITY_DISTANCE_TINY,
+    VISIBILITY_DISTANCE_SMALL,
+    VISIBILITY_DISTANCE_LARGE,
+    VISIBILITY_DISTANCE_GIGANTIC,
+    MAX_VISIBILITY_DISTANCE
+};
+
 uint32 GuidHigh2TypeId(HighGuid guid_hi)
 {
     switch(guid_hi)
@@ -847,12 +857,13 @@ void WorldObject::SetFarVisible(bool on)
     m_isFarVisible = on;
 }
 
-void WorldObject::SetLargeObject(bool on)
+void WorldObject::SetVisibilityDistanceOverride(VisibilityDistanceType type)
 {
+    ASSERT(type < VisibilityDistanceType::Max);
     if (GetTypeId() == TYPEID_PLAYER)
         return;
 
-    m_isLargeObject = on;
+    m_visibilityDistanceOverride = VisibilityDistances[AsUnderlyingType(type)];
 }
 
 void WorldObject::CleanupsBeforeDelete(bool /*finalCleanup*/)
@@ -1506,10 +1517,10 @@ void WorldObject::AddObjectToRemoveList()
 
 float WorldObject::GetVisibilityRange() const
 {
-    if (IsFarVisible() && !ToPlayer())
+    if (IsVisibilityOverride() && !ToPlayer())
+        return *m_visibilityDistanceOverride;
+    else if (IsFarVisible() && !ToPlayer())
         return MAX_VISIBILITY_DISTANCE;
-    else if (IsLargeObject() && !ToPlayer())
-        return SIGHT_LARGE;
     else if (GetTypeId() == TYPEID_GAMEOBJECT)
         return GetMap()->GetVisibilityRange() + VISIBILITY_INC_FOR_GOBJECTS;
     else
@@ -1546,10 +1557,10 @@ float WorldObject::GetSightRange(const WorldObject* target) const
     {
         if (ToPlayer())
         {
-            if (target && target->IsFarVisible() && !target->ToPlayer())
+            if (target && target->IsVisibilityOverride() && !target->ToPlayer())
+                return *m_visibilityDistanceOverride;
+            else if (target && target->IsFarVisible() && !target->ToPlayer())
                 return MAX_VISIBILITY_DISTANCE;
-            else if (target && target->IsLargeObject() && !target->ToPlayer())
-                return SIGHT_LARGE;
             else if (ToPlayer()->GetCinematicMgr()->IsOnCinematic())
                 return MAX_VISIBILITY_DISTANCE;
             else
