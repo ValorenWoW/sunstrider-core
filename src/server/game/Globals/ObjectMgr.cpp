@@ -183,7 +183,7 @@ void ObjectMgr::RestoreDeletedItems()
                 std::string subject = proto->Name1;
 
                 // text
-                MailDraft draft("Recovered Item", "We recovered a lost item in the twisting nether and noted that it was yours.$B$BPlease find said object enclosed.");
+                MailDraft draft(subject, "We recovered a lost item in the twisting nether and noted that it was yours.$B$BPlease find said object enclosed.");
                 draft.AddItem(restoredItem);
                 draft.SendMailTo(trans, MailReceiver(player), MailSender(MAIL_NORMAL, memberGuid), MAIL_CHECK_MASK_NONE, 30 * DAY);
 
