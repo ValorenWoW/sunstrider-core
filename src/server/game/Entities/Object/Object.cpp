@@ -777,7 +777,6 @@ WorldObject::WorldObject(bool isWorldObject) :
     mSemaphoreTeleport(false),
     m_isActive(false),
     m_isFarVisible(false),
-    m_isLargeObject(false),
     m_isTempWorldObject(false),
     m_transport(nullptr),
     m_phaseMask(PHASEMASK_NORMAL),
@@ -1569,7 +1568,7 @@ float WorldObject::GetSightRange(const WorldObject* target) const
         else if (ToCreature())
             return ToCreature()->m_SightDistance;
         else
-            return SIGHT_RANGE_UNIT;
+            return VISIBILITY_DISTANCE_SMALL;
     }
 
     if (ToDynObject() && isActiveObject())
