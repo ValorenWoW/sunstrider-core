@@ -3,3 +3,6 @@ INSERT INTO creature_template_addon (entry, visibilityDistanceType) VALUES (1284
 
 -- CREATURE_DIFFICULTYFLAGS_3_GIGANTIC_AOI -> VISIBILITY_DISTANCE_GIGANTIC
 INSERT INTO creature_template_addon (entry, visibilityDistanceType) VALUES (90, 4), (392, 4), (832, 4), (1493, 4), (2120, 4), (7024, 4), (14269, 4), (14272, 4), (14824, 4), (22441, 4), (22522, 4), (24925, 4), (34564, 4), (50008, 4), (50038, 4), (50042, 4), (50055, 4), (50056, 4), (50057, 4), (50061, 4), (50062, 4), (50074, 4), (50075, 4), (50076, 4), (50089, 4), (50091, 4) ON DUPLICATE KEY UPDATE visibilityDistanceType = 4;
+
+-- CREATURE_DIFFICULTYFLAGS_3_INFINITE_AOI -> MAX_VISIBILITY_DISTANCE
+INSERT INTO creature_template_addon (entry, visibilityDistanceType) VALUES (229, 5), (13116, 5), (13117, 5), (18733, 5), (20000, 5), (50009, 5), (50067, 5) ON DUPLICATE KEY UPDATE visibilityDistanceType = 5;
