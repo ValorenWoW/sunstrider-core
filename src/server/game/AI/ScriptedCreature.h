@@ -296,16 +296,6 @@ private:
     bool _isCombatMovementAllowed = true;
 };
 
-class TC_GAME_API EntryCheckPredicate
-{
-public:
-	EntryCheckPredicate(uint32 entry) : _entry(entry) { }
-	bool operator()(ObjectGuid const& guid) const { return guid.GetEntry() == _entry; }
-
-private:
-	uint32 _entry;
-};
-
 class TC_GAME_API BossAI : public ScriptedAI
 {
 public:
