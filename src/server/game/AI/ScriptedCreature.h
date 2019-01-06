@@ -250,6 +250,9 @@ struct TC_GAME_API ScriptedAI : public CreatureAI
     //Returns friendly unit with the most amount of hp missing from max hp
     Unit* DoSelectLowestHpFriendly(float range, uint32 MinHPDiff = 1);
 
+    //Returns friendly unit with hp pct below specified and with specified entry
+    Unit* DoSelectBelowHpPctFriendlyWithEntry(uint32 entry, float range, uint8 hpPct = 1, bool excludeSelf = true);
+
     //Returns a list of friendly CC'd units within range
     std::list<Creature*> DoFindFriendlyCC(float range);
 
@@ -262,6 +265,14 @@ struct TC_GAME_API ScriptedAI : public CreatureAI
     // return true for heroic mode. i.e.
     bool IsHeroic() const { return _isHeroic; }
 
+    // Used to control if MoveChase() is to be used or not in AttackStart(). Some creatures does not chase victims
+    // NOTE: If you use SetCombatMovement while the creature is in combat, it will do NOTHING - This only affects AttackStart
+    //       You should make the necessary to make it happen so.
+    //       Remember that if you modified _isCombatMovementAllowed (e.g: using SetCombatMovement) it will not be reset at Reset().
+    //       It will keep the last value you set.
+    void SetCombatMovement(bool allowMovement) { _isCombatMovementAllowed = allowMovement; };
+    bool IsCombatMovementAllowed() const { return _isCombatMovementAllowed; }
+
     //Returns spells that meet the specified criteria from the creatures spell list
     SpellInfo const* SelectSpell(Unit* Target, SpellSchoolMask School, Mechanics Mechanic, SelectSpellTarget Targets, uint32 PowerCostMin, uint32 PowerCostMax, float RangeMin, float RangeMax, SelectEffect Effect);
 
@@ -273,10 +284,26 @@ struct TC_GAME_API ScriptedAI : public CreatureAI
     bool EnterEvadeIfOutOfCombatArea();
     virtual bool CheckEvadeIfOutOfCombatArea() const { return false; }
 
+    template <class T>
+    inline T const& DUNGEON_MODE(T const& normal5, T const& heroic10) const
+    {
+        return heroic10;
+    }
+
 private:
     uint32 _evadeCheckCooldown;
     bool _isHeroic;
+    bool _isCombatMovementAllowed = true;
+};
 
+class TC_GAME_API EntryCheckPredicate
+{
+public:
+	EntryCheckPredicate(uint32 entry) : _entry(entry) { }
+	bool operator()(ObjectGuid const& guid) const { return guid.GetEntry() == _entry; }
+
+private:
+	uint32 _entry;
 };
 
 class TC_GAME_API BossAI : public ScriptedAI

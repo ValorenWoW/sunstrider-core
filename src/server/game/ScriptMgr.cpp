@@ -14,6 +14,7 @@
 #include "SmartAI.h"
 #include "OutdoorPvPMgr.h"
 #include "Chat.h"
+#include "Log.h"
 #ifdef TESTS
 #include "TestCase.h"
 #endif

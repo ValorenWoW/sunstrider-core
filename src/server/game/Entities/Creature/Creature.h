@@ -595,6 +595,7 @@ class TC_GAME_API Creature : public Unit, public GridObject<Creature>, public Ma
 
         bool isCanInteractWithBattleMaster(Player* player, bool msg) const;
         bool CanResetTalents(Player* player) const;
+        bool CanCreatureAttack(Unit const* victim, bool force = true) const;
         bool IsOutOfThreatArea(Unit const* pVictim) const;
         bool IsImmunedToSpell(SpellInfo const* spellInfo, WorldObject const* caster) const override;
         bool IsImmunedToSpellEffect(SpellInfo const* spellInfo, uint32 index, WorldObject const* caster) const override;

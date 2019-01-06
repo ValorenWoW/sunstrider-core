@@ -1272,6 +1272,38 @@ bool Creature::isCanInteractWithBattleMaster(Player* pPlayer, bool msg) const
     return true;
 }
 
+// this should not be called by petAI
+bool Creature::CanCreatureAttack(Unit const* victim, bool /*force*/) const
+{
+	if (!victim->IsInMap(this))
+		return false;
+
+	if (!IsValidAttackTarget(victim))
+		return false;
+
+	if (!victim->isInAccessiblePlaceFor(this))
+		return false;
+
+	if (IsAIEnabled() && !AI()->CanAIAttack(victim))
+		return false;
+
+	if (GetMap()->IsDungeon())
+		return true;
+
+	// if the mob is actively being damaged, do not reset due to distance unless it's a world boss
+	if (!IsWorldBoss())
+		if (time(NULL) - GetLastDamagedTime() <= MAX_AGGRO_RESET_TIME)
+			return true;
+
+	// Use AttackDistance in distance check if threat radius is lower. This prevents creature bounce in and out of combat every update tick.
+	float dist = std::max(GetAggroRange(victim), (float)sWorld->getFloatConfig(CONFIG_THREAT_RADIUS));
+
+	if (Unit* unit = GetCharmerOrOwner())
+		return victim->IsWithinDist(unit, dist);
+	else
+		return victim->IsInDist(&m_homePosition, dist);
+}
+
 Player* Creature::GetLootRecipient() const
 {
     if (!m_lootRecipient) 

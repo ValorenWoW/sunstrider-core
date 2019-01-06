@@ -16,6 +16,19 @@ class AreaBoundary;
 #define OUT_LOAD_INST_DATA_COMPLETE    
 #define OUT_LOAD_INST_DATA_FAIL        TC_LOG_ERROR("scripts","Unable to load Instance Data for Instance %s (Map %d, Instance Id: %d).",instance->GetMapName(), instance->GetId(), instance->GetInstanceId())
 
+// Not in TBC
+enum EncounterFrameType
+{
+    ENCOUNTER_FRAME_ENGAGE              = 0,
+    ENCOUNTER_FRAME_DISENGAGE           = 1,
+    ENCOUNTER_FRAME_UPDATE_PRIORITY     = 2,
+    ENCOUNTER_FRAME_ADD_TIMER           = 3,
+    ENCOUNTER_FRAME_ENABLE_OBJECTIVE    = 4,
+    ENCOUNTER_FRAME_UPDATE_OBJECTIVE    = 5,
+    ENCOUNTER_FRAME_DISABLE_OBJECTIVE   = 6,
+    ENCOUNTER_FRAME_UNK7                = 7 // Seems to have something to do with sorting the encounter units
+};
+
 enum EncounterState : uint32
 {
     NOT_STARTED   = 0,
@@ -189,6 +202,8 @@ friend class InstanceMap;
         static char const* GetBossStateName(uint8 state);
         CreatureBoundary const* GetBossBoundary(uint32 id) const { return id < bosses.size() ? &bosses[id].boundary : nullptr; }
 
+        void SendEncounterUnit(uint32 type, Unit* unit = nullptr, uint8 param1 = 0, uint8 param2 = 0) {};
+
 #ifdef LICH_KING
         // Achievement criteria additional requirements check
         // NOTE: not use this if same can be checked existed requirement types from AchievementCriteriaRequirementType
@@ -211,6 +226,9 @@ friend class InstanceMap;
         void LoadDoorData(std::vector<DoorData> const data);
         void LoadMinionData(std::vector<MinionData> const data);
         void LoadObjectData(std::vector<ObjectData> const creatureData, std::vector<ObjectData> const gameObjectData);
+        void LoadDoorData(DoorData const* data);
+        void LoadMinionData(MinionData const* data);
+        void LoadObjectData(ObjectData const* creatureData, ObjectData const* gameObjectData);
 
         void AddObject(Creature* obj, bool add);
         void AddObject(GameObject* obj, bool add);
@@ -247,7 +265,7 @@ friend class InstanceMap;
         bool _SkipCheckRequiredBosses(Player const* player = nullptr) const;
     private:
         static void LoadObjectData(std::vector<ObjectData> const creatureData, ObjectInfoMap& objectInfo);
-        //LK? void UpdateEncounterState(EncounterCreditType type, uint32 creditEntry, Unit* source);
+        static void LoadObjectData(ObjectData const* creatureData, ObjectInfoMap& objectInfo);
 
         std::vector<char> headers;
         std::vector<BossInfo> bosses;

@@ -466,7 +466,6 @@ bool GameObject::Create(ObjectGuid::LowType guidlow, uint32 name_id, Map *map, u
     if (spawnid)
         m_spawnId = spawnid;
 
-    /*TC
     if (uint32 linkedEntry = GetGOInfo()->GetLinkedGameObjectEntry())
     {
         GameObject* linkedGO = new GameObject();
@@ -475,11 +474,14 @@ bool GameObject::Create(ObjectGuid::LowType guidlow, uint32 name_id, Map *map, u
             SetLinkedTrap(linkedGO);
             map->AddToMap(linkedGO);
         }
-        else
-            delete linkedGO;
-    }*/
+    }
 
     return true;
+}
+
+GameObject* GameObject::GetLinkedTrap()
+{
+	return ObjectAccessor::GetGameObject(*this, m_linkedTrap);
 }
 
 void GameObject::Update(uint32 diff)
