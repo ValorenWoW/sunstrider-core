@@ -170,7 +170,7 @@ void ObjectMgr::RestoreDeletedItems()
 
         if (proto)
         {
-            Item* restoredItem = Item::CreateItem(itemEntry, stackCount ? stackCount : 1, player ? player : (const Player *)0);
+            Item* restoredItem = Item::CreateItem(itemEntry, stackCount ? stackCount : 1, player);
             if (restoredItem)
             {
                 // begin
@@ -187,10 +187,10 @@ void ObjectMgr::RestoreDeletedItems()
                 draft.AddItem(restoredItem);
                 draft.SendMailTo(trans, MailReceiver(player), MailSender(MAIL_NORMAL, memberGuid), MAIL_CHECK_MASK_NONE, 30 * DAY);
 
-                CharacterDatabase.CommitTransaction(trans);
-
                 // delete from table
                 CharacterDatabase.PExecute("DELETE FROM character_deleted_items WHERE id = %u", id);
+
+                CharacterDatabase.CommitTransaction(trans);
 
                 count++;
             }
