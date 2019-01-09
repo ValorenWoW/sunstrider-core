@@ -188,7 +188,7 @@ void ObjectMgr::RestoreDeletedItems()
                 draft.SendMailTo(trans, MailReceiver(player), MailSender(MAIL_NORMAL, memberGuid), MAIL_CHECK_MASK_NONE, 30 * DAY);
 
                 // delete from table
-                CharacterDatabase.PExecute("DELETE FROM character_deleted_items WHERE id = %u", id);
+                trans->PAppend("DELETE FROM character_deleted_items WHERE id = %u", id);
 
                 CharacterDatabase.CommitTransaction(trans);
 
