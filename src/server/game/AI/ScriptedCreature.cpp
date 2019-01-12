@@ -11,7 +11,6 @@
 #include "InstanceScript.h"
 #include "GameTime.h"
 #include "TemporarySummon.h"
-#include "Log.h"
 
  // Spell summary for ScriptedAI::SelectSpell
 struct TSpellSummary

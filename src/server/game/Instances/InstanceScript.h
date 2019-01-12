@@ -263,7 +263,6 @@ friend class InstanceMap;
         bool _SkipCheckRequiredBosses(Player const* player = nullptr) const;
     private:
         static void LoadObjectData(std::vector<ObjectData> const creatureData, ObjectInfoMap& objectInfo);
-        static void LoadObjectData(ObjectData const* creatureData, ObjectInfoMap& objectInfo);
 
         std::vector<char> headers;
         std::vector<BossInfo> bosses;
