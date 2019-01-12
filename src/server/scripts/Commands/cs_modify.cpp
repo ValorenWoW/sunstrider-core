@@ -128,160 +128,59 @@ public:
         return true;
     }
 
-    // Edit Player Strength
+    static bool HandleModifyStatCommand(ChatHandler* handler, char const* args, std::string const statName, UnitMods modStat, Stats stat)
+    {
+        if (!*args)
+            return false;
+
+        int32 stat = atoi((char*)args);
+
+        if (stat <= 0)
+        {
+            handler->SendSysMessage(LANG_BAD_VALUE);
+            handler->SetSentErrorMessage(true);
+            return false;
+        }
+
+        Player* chr = handler->GetSelectedPlayerOrSelf();
+        if (chr == nullptr)
+        {
+            handler->SendSysMessage(LANG_NO_CHAR_SELECTED);
+            handler->SetSentErrorMessage(true);
+            return false;
+        }
+
+        handler->PSendSysMessage("You change %s of %s to %u.", statName.c_str(), chr->GetName().c_str(), stat);
+
+        chr->HandleStatFlatModifier(modStat, BASE_VALUE, float(stat), true);
+        chr->UpdateStatBuffMod(stat);
+
+        return true;
+    }
+
     static bool HandleModifyStrengthCommand(ChatHandler* handler, char const* args)
     {
-        if (!*args)
-            return false;
-
-        int32 stat = atoi((char*)args);
-
-        if (stat <= 0 )
-        {
-            handler->SendSysMessage(LANG_BAD_VALUE);
-            handler->SetSentErrorMessage(true);
-            return false;
-        }
-
-        Player *chr = handler->GetSelectedPlayerOrSelf();
-        if (chr == nullptr)
-        {
-            handler->SendSysMessage(LANG_NO_CHAR_SELECTED);
-            handler->SetSentErrorMessage(true);
-            return false;
-        }
-
-        handler->PSendSysMessage("You change strength of %s to %u.", chr->GetName().c_str(), stat);
-
-        chr->HandleStatFlatModifier(UNIT_MOD_STAT_STRENGTH, BASE_VALUE, float(stat), true);
-        chr->UpdateStatBuffMod(STAT_STRENGTH);
-
-        return true;
+        return HandleModifyStatCommand(handler, args, "strength", UNIT_MOD_STAT_STRENGTH, STAT_STRENGTH);
     }
 
-    // Edit Player Agility
     static bool HandleModifyAgilityCommand(ChatHandler* handler, char const* args)
     {
-        if (!*args)
-            return false;
-
-        int32 stat = atoi((char*)args);
-
-        if (stat <= 0)
-        {
-            handler->SendSysMessage(LANG_BAD_VALUE);
-            handler->SetSentErrorMessage(true);
-            return false;
-        }
-
-        Player *chr = handler->GetSelectedPlayerOrSelf();
-        if (chr == nullptr)
-        {
-            handler->SendSysMessage(LANG_NO_CHAR_SELECTED);
-            handler->SetSentErrorMessage(true);
-            return false;
-        }
-
-        handler->PSendSysMessage("You change agility of %s to %u.", chr->GetName().c_str(), stat);
-
-        chr->HandleStatFlatModifier(UNIT_MOD_STAT_AGILITY, BASE_VALUE, float(stat), true);
-        chr->UpdateStatBuffMod(STAT_AGILITY);
-
-        return true;
+        return HandleModifyStatCommand(handler, args, "agility", UNIT_MOD_STAT_AGILITY, STAT_AGILITY);
     }
 
-    // Edit Player Intellect
     static bool HandleModifyIntellectCommand(ChatHandler* handler, char const* args)
     {
-        if (!*args)
-            return false;
-
-        int32 stat = atoi((char*)args);
-
-        if (stat <= 0)
-        {
-            handler->SendSysMessage(LANG_BAD_VALUE);
-            handler->SetSentErrorMessage(true);
-            return false;
-        }
-
-        Player *chr = handler->GetSelectedPlayerOrSelf();
-        if (chr == nullptr)
-        {
-            handler->SendSysMessage(LANG_NO_CHAR_SELECTED);
-            handler->SetSentErrorMessage(true);
-            return false;
-        }
-
-        handler->PSendSysMessage("You change intellect of %s to %u.", chr->GetName().c_str(), stat);
-
-        chr->HandleStatFlatModifier(UNIT_MOD_STAT_INTELLECT, BASE_VALUE, float(stat), true);
-        chr->UpdateStatBuffMod(STAT_INTELLECT);
-
-        return true;
+        return HandleModifyStatCommand(handler, args, "intellect", UNIT_MOD_STAT_INTELLECT, STAT_INTELLECT);
     }
 
-    // Edit Player Spirit
     static bool HandleModifySpiritCommand(ChatHandler* handler, char const* args)
     {
-        if (!*args)
-            return false;
-
-        int32 stat = atoi((char*)args);
-
-        if (stat <= 0)
-        {
-            handler->SendSysMessage(LANG_BAD_VALUE);
-            handler->SetSentErrorMessage(true);
-            return false;
-        }
-
-        Player *chr = handler->GetSelectedPlayerOrSelf();
-        if (chr == nullptr)
-        {
-            handler->SendSysMessage(LANG_NO_CHAR_SELECTED);
-            handler->SetSentErrorMessage(true);
-            return false;
-        }
-
-        handler->PSendSysMessage("You change spirit of %s to %u.", chr->GetName().c_str(), stat);
-
-        chr->HandleStatFlatModifier(UNIT_MOD_STAT_SPIRIT, BASE_VALUE, float(stat), true);
-        chr->UpdateStatBuffMod(STAT_SPIRIT);
-
-        return true;
+        return HandleModifyStatCommand(handler, args, "spirit", UNIT_MOD_STAT_SPIRIT, STAT_SPIRIT);
     }
 
-    // Edit Player Stamina
     static bool HandleModifyStaminaCommand(ChatHandler* handler, char const* args)
     {
-        if (!*args)
-            return false;
-
-        int32 stat = atoi((char*)args);
-
-        if (stat <= 0)
-        {
-            handler->SendSysMessage(LANG_BAD_VALUE);
-            handler->SetSentErrorMessage(true);
-            return false;
-        }
-
-        Player *chr = handler->GetSelectedPlayerOrSelf();
-        if (chr == nullptr)
-        {
-            handler->SendSysMessage(LANG_NO_CHAR_SELECTED);
-            handler->SetSentErrorMessage(true);
-            return false;
-        }
-
-        handler->PSendSysMessage("You change stamina of %s to %u.", chr->GetName().c_str(), stat);
-
-        chr->HandleStatFlatModifier(UNIT_MOD_STAT_STAMINA, BASE_VALUE, float(stat), true);
-        chr->UpdateStatBuffMod(STAT_STAMINA);
-        chr->SetHealth(chr->GetMaxHealth());
-
-        return true;
+        return HandleModifyStatCommand(handler, args, "stamina", UNIT_MOD_STAT_STAMINA, STAT_STAMINA);
     }
 
     // Edit Player HP
