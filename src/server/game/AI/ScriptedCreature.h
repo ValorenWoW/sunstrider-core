@@ -282,13 +282,22 @@ struct TC_GAME_API ScriptedAI : public CreatureAI
     template <class T>
     inline T const& DUNGEON_MODE(T const& normal5, T const& heroic10) const
     {
+        switch (_difficulty)
+        {
+        case DUNGEON_DIFFICULTY_NORMAL:
+            return normal5;
+        case DUNGEON_DIFFICULTY_HEROIC:
+            return heroic10;
+        default:
+            break;
+        }
+
         return heroic10;
     }
 
 private:
     uint32 _evadeCheckCooldown;
     bool _isHeroic;
-    bool _isCombatMovementAllowed = true;
 };
 
 class TC_GAME_API BossAI : public ScriptedAI
