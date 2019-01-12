@@ -150,7 +150,7 @@ public:
             return false;
         }
 
-        handler->PSendSysMessage("You change %s of %s to %u.", statName.c_str(), chr->GetName().c_str(), stat);
+        handler->PSendSysMessage("You change %s of %s to %i.", statName.c_str(), chr->GetName().c_str(), stat);
 
         chr->HandleStatFlatModifier(modStat, BASE_VALUE, float(stat), true);
         chr->UpdateStatBuffMod(stat);
