@@ -127,7 +127,6 @@ class TC_GAME_API _SpellScript
         }
 
         static bool ValidateSpellInfo(std::vector<uint32> const& spellIds);
-        static bool _ValidateSpellInfo(uint32 const* begin, uint32 const* end);
 };
 
 // SpellScript interface - enum used for runtime checks of script function calls

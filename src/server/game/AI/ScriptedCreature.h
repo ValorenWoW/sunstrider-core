@@ -265,13 +265,8 @@ struct TC_GAME_API ScriptedAI : public CreatureAI
     // return true for heroic mode. i.e.
     bool IsHeroic() const { return _isHeroic; }
 
-    // Used to control if MoveChase() is to be used or not in AttackStart(). Some creatures does not chase victims
-    // NOTE: If you use SetCombatMovement while the creature is in combat, it will do NOTHING - This only affects AttackStart
-    //       You should make the necessary to make it happen so.
-    //       Remember that if you modified _isCombatMovementAllowed (e.g: using SetCombatMovement) it will not be reset at Reset().
-    //       It will keep the last value you set.
-    void SetCombatMovement(bool allowMovement) { _isCombatMovementAllowed = allowMovement; };
-    bool IsCombatMovementAllowed() const { return _isCombatMovementAllowed; }
+    //TC compat
+    inline void SetCombatMovement(bool allowMovement) { SetCombatMovementAllowed(allowMovement); };
 
     //Returns spells that meet the specified criteria from the creatures spell list
     SpellInfo const* SelectSpell(Unit* Target, SpellSchoolMask School, Mechanics Mechanic, SelectSpellTarget Targets, uint32 PowerCostMin, uint32 PowerCostMax, float RangeMin, float RangeMax, SelectEffect Effect);

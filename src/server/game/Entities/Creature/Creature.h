@@ -595,7 +595,6 @@ class TC_GAME_API Creature : public Unit, public GridObject<Creature>, public Ma
 
         bool isCanInteractWithBattleMaster(Player* player, bool msg) const;
         bool CanResetTalents(Player* player) const;
-        bool CanCreatureAttack(Unit const* victim, bool force = true) const;
         bool IsOutOfThreatArea(Unit const* pVictim) const;
         bool IsImmunedToSpell(SpellInfo const* spellInfo, WorldObject const* caster) const override;
         bool IsImmunedToSpellEffect(SpellInfo const* spellInfo, uint32 index, WorldObject const* caster) const override;
@@ -611,6 +610,12 @@ class TC_GAME_API Creature : public Unit, public GridObject<Creature>, public Ma
         }
         //same as CanCreatureAttack from TC but returns a CanAttackResult instead. Added a _ to the name to avoid confusion.
         CanAttackResult _CanCreatureAttack(Unit const* target, bool force = true) const;
+        //TC compat
+        bool CanCreatureAttack(Unit const* victim, bool force = true) const
+        {
+            return _CanCreatureAttack(victim, force) == CAN_ATTACK_RESULT_OK;
+        }
+
         bool IsWorldBoss() const
         {
             if(IsPet())

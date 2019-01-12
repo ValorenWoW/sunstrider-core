@@ -281,12 +281,14 @@ bool FarthestTargetSelector::operator()(Unit const* target) const
     return true;
 }
 
-void UnitAI::DoCast(uint32 spellId)
+uint32 UnitAI::DoCast(uint32 spellId)
 {
     Unit* target = me->GetVictim();
 
     if (target)
-        me->CastSpell(target, spellId, false);
+        return me->CastSpell(target, spellId, false);
+
+    return SPELL_FAILED_BAD_TARGETS;
 }
 
 uint32 UnitAI::DoCast(Unit* victim, uint32 spellId, CastSpellExtraArgs const& args)

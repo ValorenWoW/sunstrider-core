@@ -479,11 +479,6 @@ bool GameObject::Create(ObjectGuid::LowType guidlow, uint32 name_id, Map *map, u
     return true;
 }
 
-GameObject* GameObject::GetLinkedTrap()
-{
-	return ObjectAccessor::GetGameObject(*this, m_linkedTrap);
-}
-
 void GameObject::Update(uint32 diff)
 {
     m_Events.Update(diff);

@@ -16,7 +16,7 @@ class AreaBoundary;
 #define OUT_LOAD_INST_DATA_COMPLETE    
 #define OUT_LOAD_INST_DATA_FAIL        TC_LOG_ERROR("scripts","Unable to load Instance Data for Instance %s (Map %d, Instance Id: %d).",instance->GetMapName(), instance->GetId(), instance->GetInstanceId())
 
-// Not in TBC
+#ifdef LICH_KING
 enum EncounterFrameType
 {
     ENCOUNTER_FRAME_ENGAGE              = 0,
@@ -28,6 +28,7 @@ enum EncounterFrameType
     ENCOUNTER_FRAME_DISABLE_OBJECTIVE   = 6,
     ENCOUNTER_FRAME_UNK7                = 7 // Seems to have something to do with sorting the encounter units
 };
+#endif
 
 enum EncounterState : uint32
 {
@@ -202,9 +203,9 @@ friend class InstanceMap;
         static char const* GetBossStateName(uint8 state);
         CreatureBoundary const* GetBossBoundary(uint32 id) const { return id < bosses.size() ? &bosses[id].boundary : nullptr; }
 
+#ifdef LICH_KING
         void SendEncounterUnit(uint32 type, Unit* unit = nullptr, uint8 param1 = 0, uint8 param2 = 0) {};
 
-#ifdef LICH_KING
         // Achievement criteria additional requirements check
         // NOTE: not use this if same can be checked existed requirement types from AchievementCriteriaRequirementType
         virtual bool CheckAchievementCriteriaMeet(uint32 /*criteria_id*/, Player const* /*source*/, Unit const* /*target*/ = nullptr, uint32 /*miscvalue1*/ = 0);
@@ -226,9 +227,6 @@ friend class InstanceMap;
         void LoadDoorData(std::vector<DoorData> const data);
         void LoadMinionData(std::vector<MinionData> const data);
         void LoadObjectData(std::vector<ObjectData> const creatureData, std::vector<ObjectData> const gameObjectData);
-        void LoadDoorData(DoorData const* data);
-        void LoadMinionData(MinionData const* data);
-        void LoadObjectData(ObjectData const* creatureData, ObjectData const* gameObjectData);
 
         void AddObject(Creature* obj, bool add);
         void AddObject(GameObject* obj, bool add);

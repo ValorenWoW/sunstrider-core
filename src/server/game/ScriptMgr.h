@@ -50,8 +50,6 @@ class ModuleReference;
 class TestCase;
 class OutdoorPvP;
 
-#define VISIBLE_RANGE 166.0f // MAX visible range (size of grid)
-
 class TC_GAME_API ScriptObject
 {
     friend class ScriptMgr;

@@ -153,53 +153,6 @@ void InstanceScript::LoadBossBoundaries(BossBoundaryData const& data)
             bosses[entry.BossId].boundary.push_back(entry.Boundary);
 }
 
-void InstanceScript::LoadMinionData(MinionData const* data)
-{
-	while (data->entry)
-	{
-		if (data->bossId < bosses.size())
-			minions.insert(std::make_pair(data->entry, MinionInfo(&bosses[data->bossId])));
-
-		++data;
-	}
-
-	TC_LOG_DEBUG("scripts", "InstanceScript::LoadMinionData: " UI64FMTD " minions loaded.", uint64(minions.size()));
-}
-
-void InstanceScript::LoadDoorData(DoorData const* data)
-{
-	while (data->entry)
-	{
-		if (data->bossId < bosses.size())
-			doors.insert(std::make_pair(data->entry, DoorInfo(&bosses[data->bossId], data->type)));
-
-		++data;
-	}
-
-	TC_LOG_DEBUG("scripts", "InstanceScript::LoadDoorData: " UI64FMTD " doors loaded.", uint64(doors.size()));
-}
-
-void InstanceScript::LoadObjectData(ObjectData const* creatureData, ObjectData const* gameObjectData)
-{
-	if (creatureData)
-		LoadObjectData(creatureData, _creatureInfo);
-
-	if (gameObjectData)
-		LoadObjectData(gameObjectData, _gameObjectInfo);
-
-	TC_LOG_DEBUG("scripts", "InstanceScript::LoadObjectData: " SZFMTD " objects loaded.", _creatureInfo.size() + _gameObjectInfo.size());
-}
-
-void InstanceScript::LoadObjectData(ObjectData const* data, ObjectInfoMap& objectInfo)
-{
-	while (data->entry)
-	{
-		ASSERT(objectInfo.find(data->entry) == objectInfo.end());
-		objectInfo[data->entry] = data->type;
-		++data;
-	}
-}
-
 void InstanceScript::LoadMinionData(std::vector<MinionData> const datas)
 {
     for (auto data : datas)
