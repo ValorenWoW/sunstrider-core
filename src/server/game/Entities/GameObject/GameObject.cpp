@@ -163,6 +163,11 @@ std::string GameObject::GetAIName() const
     return sObjectMgr->GetGameObjectTemplate(GetEntry())->AIName;
 }
 
+GameObject* GameObject::GetLinkedTrap()
+{
+    return ObjectAccessor::GetGameObject(*this, m_linkedTrap);
+}
+
 void GameObject::BuildValuesUpdate(uint8 updateType, ByteBuffer* data, Player* target) const
 {
     if (!target)
