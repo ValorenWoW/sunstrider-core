@@ -16046,7 +16046,7 @@ Item* Player::_LoadItem(SQLTransaction& trans, uint32 zoneId, uint32 timeDiff, F
             GetGUID().GetCounter(), GetName().c_str(), itemEntry);
 
         // Insert unknown deleted item into table
-        trans->PAppend(("INSERT INTO character_deleted_items (player_guid, item_entry, stack_count) VALUES ('%u', '%u', '%u')", GetGUID(), itemEntry, fields[4].GetUInt32());
+        trans->PAppend("INSERT INTO character_deleted_items (player_guid, item_entry, stack_count) VALUES ('%u', '%u', '%u')", GetGUID(), itemEntry, fields[4].GetUInt32());
         
         Item::DeleteFromInventoryDB(trans, itemGuid);
         Item::DeleteFromDB(trans, itemGuid);
