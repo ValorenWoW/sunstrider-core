@@ -11,25 +11,30 @@
 
 enum GameEventState
 {
-    GAMEEVENT_NORMAL = 0,   // standard game events
-    GAMEEVENT_WORLD_INACTIVE,   // not yet started
-    GAMEEVENT_WORLD_CONDITIONS,  // condition matching phase
-    GAMEEVENT_WORLD_NEXTPHASE,   // conditions are met, now 'lenght' timer to start next event
-    GAMEEVENT_WORLD_FINISHED    // next events are started, unapply this one
+    GAMEEVENT_NORMAL           = 0,  // standard game events
+    GAMEEVENT_WORLD_INACTIVE   = 1,  // not yet started
+    GAMEEVENT_WORLD_CONDITIONS = 2,  // condition matching phase
+    GAMEEVENT_WORLD_NEXTPHASE  = 3,  // conditions are met, now 'lenght' timer to start next event
+    GAMEEVENT_WORLD_FINISHED   = 4,  // next events are started, unapply this one
+    GAMEEVENT_INTERNAL         = 5,  // never handled in update
 };
 
 //some events from DB for core usage
 enum GameEventList
 {
     GAME_EVENT_MIDSUMMER_FIRE_FESTIVAL = 1,
+    GAME_EVENT_NEW_YEARS_EVE           = 6,
     GAME_EVENT_HALLOWS_END             = 12,
-    GAME_EVENT_NIGHTS                  = 27,
-    GAME_EVENT_WICKERMAN_FESTIVAL      = 50,
-    GAME_EVENT_BETA                    = 62,
-    GAME_EVENT_2_4                     = 67,
-    GAME_EVENT_PIRATES_DAY             = 80,
+    GAME_EVENT_NIGHTS                  = 25,
+    GAME_EVENT_PIRATES_DAY             = 50,
+    GAME_EVENT_WINTER_VEIL_PRESENTS    = 52,
+    GAME_EVENT_WICKERMAN_FESTIVAL      = 150,
+    GAME_EVENT_HORSENAME_RAZOR_HILL    = 156,
+    GAME_EVENT_BETA                    = 162,
+    GAME_EVENT_2_4                     = 167,
+
 #ifdef LICH_KING
-    GAME_EVENT_DAY_OF_THE_DEAD         = 81,
+    GAME_EVENT_DAY_OF_THE_DEAD         = 51,
 #endif
 };
 
@@ -104,7 +109,6 @@ class TC_GAME_API GameEventMgr
         uint32 NextCheck(uint16 entry) const;
         void LoadFromDB();
         void LoadVendors();
-        void LoadTrainers();
         uint32 Update();
         bool IsActiveEvent(uint16 event_id) { return ( m_ActiveEvents.find(event_id)!=m_ActiveEvents.end()); }
         uint32 Initialize();
@@ -159,7 +163,6 @@ class TC_GAME_API GameEventMgr
         void UpdateEventQuests(uint16 event_id, bool Activate);
         void UpdateEventNPCFlags(uint16 event_id);
         void UpdateEventNPCVendor(uint16 event_id, bool activate);
-        void UpdateEventNPCTrainer(uint16 event_id, bool activate);
         void UpdateBattlegroundSettings();
         void WarnAIScripts(uint16 event_id, bool activate); //TC RunSmartAIScripts
         bool CheckOneGameEventConditions(uint16 event_id);
@@ -180,7 +183,6 @@ class TC_GAME_API GameEventMgr
         typedef std::list<NPCVendorEntry> NPCVendorList;
         typedef std::vector<NPCVendorList> GameEventNPCVendorMap;
         //arr this is complicated to use, consider changing the type
-        typedef std::multimap<uint16 /*event*/, std::multimap<uint32 /* trainer */, TrainerSpell /* spell */>> GameEventNPCTrainerSpellsMap;
         typedef std::map<uint32 /*quest id*/, GameEventQuestToEventConditionNum> QuestIdToEventConditionMap;
         typedef std::pair<uint32 /*guid*/, uint32 /*npcflag*/> GuidNPCFlagPair;
         typedef std::list<GuidNPCFlagPair> NPCFlagList;
@@ -193,7 +195,6 @@ class TC_GAME_API GameEventMgr
         GameEventNPCVendorMap mGameEventVendors;
         GameEventModelEquipMap mGameEventModelEquip;
         GameEventModelEquipOverride mGameEventEquipOverrides; // Equip overrides from currently enable events
-        GameEventNPCTrainerSpellsMap mGameEventTrainers;
         GameEventGuidMap  mGameEventCreatureGuids;
         GameEventGuidMap  mGameEventGameobjectGuids;
         GameEventDataMap  mGameEvent;

@@ -475,12 +475,7 @@ void Object::SetFloatValue( uint16 index, float value )
 void Object::SetByteValue( uint16 index, uint8 offset, uint8 value )
 {
     ASSERT( index < m_valuesCount || PrintIndexError( index , true ) );
-
-    if(offset > 3)
-    {
-        TC_LOG_ERROR("misc","Object::SetByteValue: wrong offset %u", offset);
-        return;
-    }
+    ASSERT(offset < 4);
 
     if(uint8(m_uint32Values[ index ] >> (offset * 8)) != value)
     {
@@ -495,12 +490,7 @@ void Object::SetByteValue( uint16 index, uint8 offset, uint8 value )
 void Object::SetUInt16Value( uint16 index, uint8 offset, uint16 value )
 {
     ASSERT( index < m_valuesCount || PrintIndexError( index , true ) );
-
-    if(offset > 1)
-    {
-        TC_LOG_ERROR("misc","Object::SetUInt16Value: wrong offset %u", offset);
-        return;
-    }
+    ASSERT(offset < 2);
 
     if(uint8(m_uint32Values[ index ] >> (offset * 16)) != value)
     {
@@ -654,21 +644,16 @@ void Object::ToggleFlag( uint16 index, uint32 flag)
         SetFlag(index, flag);
 }
 
-bool Object::HasFlag( uint16 index, uint32 flag ) const
+bool Object::HasFlag(uint16 index, uint32 flag) const
 {
-    ASSERT( index < m_valuesCount || PrintIndexError( index , false ) );
-    return (m_uint32Values[ index ] & flag) != 0;
+    ASSERT(index < m_valuesCount || PrintIndexError(index, false));
+    return (m_uint32Values[index] & flag) != 0;
 }
 
 void Object::SetByteFlag( uint16 index, uint8 offset, uint8 newFlag )
 {
-    ASSERT( index < m_valuesCount || PrintIndexError( index , true ) );
-
-    if(offset > 3)
-    {
-        TC_LOG_ERROR("misc","Object::SetByteFlag: wrong offset %u", offset);
-        return;
-    }
+    ASSERT(index < m_valuesCount || PrintIndexError(index, true));
+    ASSERT(offset < 4);
 
     if(!(uint8(m_uint32Values[ index ] >> (offset * 8)) & newFlag))
     {
@@ -682,12 +667,7 @@ void Object::SetByteFlag( uint16 index, uint8 offset, uint8 newFlag )
 void Object::RemoveByteFlag( uint16 index, uint8 offset, uint8 oldFlag )
 {
     ASSERT( index < m_valuesCount || PrintIndexError( index , true ) );
-
-    if(offset > 3)
-    {
-        TC_LOG_ERROR("FIXME","Object::RemoveByteFlag: wrong offset %u", offset);
-        return;
-    }
+    ASSERT(offset < 4);
 
     if(uint8(m_uint32Values[ index ] >> (offset * 8)) & oldFlag)
     {
@@ -1472,19 +1452,19 @@ void Object::ForceValuesUpdateAtIndex(uint32 i)
     AddToObjectUpdateIfNeeded();
 }
 
-void WorldObject::SendMessageToSet(WorldPacket const* data, bool self)
+void WorldObject::SendMessageToSet(WorldPacket const* data, bool self) const
 {
     if (IsInWorld()) 
         SendMessageToSetInRange(data, GetVisibilityRange(), self, true);
 }
 
-void WorldObject::SendMessageToSet(WorldPacket const* data, Player* skipped_rcvr)
+void WorldObject::SendMessageToSet(WorldPacket const* data, Player* skipped_rcvr) const
 {
     if (IsInWorld()) 
         SendMessageToSetInRange(data, GetVisibilityRange(), false, true, skipped_rcvr);
 }
 
-void WorldObject::SendMessageToSetInRange(WorldPacket const* data, float dist, bool self, bool includeMargin /*= false*/, Player const* skipped_rcvr /*= nullptr*/)
+void WorldObject::SendMessageToSetInRange(WorldPacket const* data, float dist, bool self, bool includeMargin /*= false*/, Player const* skipped_rcvr /*= nullptr*/) const
 {
     dist += GetCombatReach();
     if (includeMargin)
@@ -3217,10 +3197,10 @@ SpellMissInfo WorldObject::MagicSpellHitResult(Unit *pVictim, SpellInfo const *s
     if (!pVictim->IsAlive() && pVictim->GetTypeId() != TYPEID_PLAYER)
         return SPELL_MISS_NONE;
         
-    // Always 1% resist chance. Send this as SPELL_MISS_MISS (note that this is not BC blizzlike, this was changed in WotLK).
+    // Always 1% incompressible resist chance
     uint32 rand = urand(0, 9999);
     if (rand > 9900)
-        return SPELL_MISS_MISS;
+        return SPELL_MISS_RESIST;
 
     SpellSchoolMask schoolMask = spell->GetSchoolMask();
 
@@ -3866,10 +3846,10 @@ bool WorldObject::IsValidAssistTarget(WorldObject const* target, SpellInfo const
     // PvP case
     if (unitTarget && unitTarget->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED))
     {
-        Player const* targetPlayerOwner = unitTarget->GetAffectingPlayer();
         if (unit && unit->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED))
         {
             Player const* selfPlayerOwner = GetAffectingPlayer();
+            Player const* targetPlayerOwner = unitTarget->GetAffectingPlayer();
             if (selfPlayerOwner && targetPlayerOwner)
             {
                 // can't assist player which is dueling someone
@@ -3878,7 +3858,7 @@ bool WorldObject::IsValidAssistTarget(WorldObject const* target, SpellInfo const
                     return false;
             }
             // can't assist player in ffa_pvp zone from outside
-            if (unitTarget->IsFFAPvP() && unit && !unit->IsFFAPvP())
+            if (unitTarget->IsFFAPvP() && !unit->IsFFAPvP())
                 return false;
 
             // can't assist player out of sanctuary from sanctuary if has pvp enabled

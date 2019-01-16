@@ -22,7 +22,6 @@ WaypointMovementGenerator<Creature>::WaypointMovementGenerator(float fake) :
     _reachedFirstNode(false),
     _useSmoothSpline(false),
     erasePathAtEnd(false),
-    _done(false),
     _splineId(0),
     customPath(nullptr),
     _pathId(0)
@@ -136,14 +135,18 @@ bool WaypointMovementGenerator<Creature>::LoadPath(Creature* creature)
         }
     }
 
+    if (_path->nodes.empty())
+    {
+        TC_LOG_ERROR("misc", "WaypointMovementGenerator::LoadPath: creature %s (Entry: %u GUID: %u DB GUID: %u) Tried to start an empty path", creature->GetName().c_str(), creature->GetEntry(), creature->GetGUID().GetCounter(), creature->GetSpawnId());
+        return false;
+    }
+
     _currentNode = GetFirstMemoryNode();
-    _done = false;
     _nextMoveTime.Reset(1000); //movement will start after 1s
 
     // inform AI
-    if(!_path->nodes.empty())
-        if (CreatureAI* AI = creature->AI())
-            AI->WaypointPathStarted(_path->nodes[_currentNode].id, _path->id);
+    if (CreatureAI* AI = creature->AI())
+        AI->WaypointPathStarted(_path->nodes[_currentNode].id, _path->id);
 
     return true;
 }
@@ -189,7 +192,6 @@ void WaypointMovementGenerator<Creature>::DoReset(Creature* creature)
 //Must be called at each point reached. MovementInform is done in here.
 void WaypointMovementGenerator<Creature>::OnArrived(Creature* creature)
 {
-    ASSERT(!_done);
     if (!_path || _path->nodes.size() <= _currentNode)
         return;
 
@@ -237,10 +239,10 @@ void WaypointMovementGenerator<Creature>::OnArrived(Creature* creature)
     //update _currentNode to next node
     bool hasNextPoint = GetNextMemoryNode(_currentNode, _currentNode, true);
 
-    _done = !hasNextPoint && creature->movespline->Finalized();
-    if (_done)
-    {
+    if (!hasNextPoint && creature->movespline->Finalized())  
+    { 
         //waypoints ended
+        AddFlag(MOVEMENTGENERATOR_FLAG_FINALIZED);
         creature->SetHomePosition(_originalHome);
         creature->UpdateCurrentWaypointInfo(0, 0);
         if (CreatureAI* ai = creature->AI())
@@ -483,8 +485,8 @@ bool WaypointMovementGenerator<Creature>::StartMove(Creature* creature)
     if (_precomputedPath.size() <= 1)
         return false;
 
+    creature->UpdateMovementFlags(false, Position(_precomputedPath[1])); //Set movement flags for first point. We should set flying depending on first point and not current position!
     Movement::MoveSplineInit init(creature);
-    creature->UpdateMovementFlags(); //restore disable gravity if needed
 
     //Set move type. Path is ended at move type change in the filling of _precomputedPath up there so this is valid for the whole spline array. 
     //This is true but for WP_PATH_DIRECTION_RANDOM where move_type of the first point only will be used because whatever
@@ -576,7 +578,7 @@ bool WaypointMovementGenerator<Creature>::DoUpdate(Creature* owner, uint32 diff)
     if (!_path || _path->nodes.empty())
         return false;
 
-    if (_done || HasFlag(MOVEMENTGENERATOR_FLAG_FINALIZED | MOVEMENTGENERATOR_FLAG_PAUSED))
+    if (HasFlag(MOVEMENTGENERATOR_FLAG_FINALIZED | MOVEMENTGENERATOR_FLAG_PAUSED))
         return true;
 
     if (!owner->CanFreeMove() || owner->HasUnitState(UNIT_STATE_LOST_CONTROL) || owner->IsMovementPreventedByCasting())

@@ -2150,12 +2150,20 @@ void Map::GetFullTerrainStatusForPosition(float x, float y, float z, PositionFul
 
         if (liquidType && liquidType < LIQUID_TYPE_NAXXRAMAS_SLIME && areaEntry)
         {
-            uint32 overrideLiquid = areaEntry->LiquidTypeOverride[liquidFlagType];
+#ifdef LICH_KING
+            uint32 overrideLiquid = areaEntry->LiquidTypeOverride[liquidEntry->Type];
+#else
+            uint32 overrideLiquid = areaEntry->LiquidTypeOverride[0]; //next fields are never set on BC, and it seems the override per type logic is not the same (since there are multiple overrides that replace different types while being always at the first override position)
+#endif
             if (!overrideLiquid && areaEntry->zone)
             {
                 AreaTableEntry const* zoneEntry = sAreaTableStore.LookupEntry(areaEntry->zone);
                 if (zoneEntry)
-                    overrideLiquid = zoneEntry->LiquidTypeOverride[liquidFlagType];
+#ifdef LICH_KING
+                    overrideLiquid = zoneEntry->LiquidTypeOverride[liquidEntry->Type];
+#else
+                    overrideLiquid = zoneEntry->LiquidTypeOverride[0];
+#endif
             }
 
             if (LiquidTypeEntry const* overrideData = sLiquidTypeStore.LookupEntry(overrideLiquid))
@@ -2968,7 +2976,7 @@ bool InstanceMap::AddPlayerToMap(Player *player)
                 {
                     // solo saves should be reset when entering a group
                     InstanceGroupBind *groupBind = pGroup->GetBoundInstance(GetDifficulty(), GetId());
-                    if (playerBind)
+                    if (playerBind && playerBind->save != mapSave)
                     {
                         //  TC_LOG_ERROR("maps","InstanceMap::Add: player %s(%d) is being put in instance %d,%d,%d,%d,%d,%d but he is in group %d and is bound to instance %d,%d,%d,%d,%d,%d!", player->GetName(), player->GetGUID().GetCounter(), mapSave->GetMapId(), mapSave->GetInstanceId(), mapSave->GetDifficulty(), mapSave->GetPlayerCount(), mapSave->GetGroupCount(), mapSave->CanReset(), pGroup->GetLeaderGUID().GetCounter(), playerBind->save->GetMapId(), playerBind->save->GetInstanceId(), playerBind->save->GetDifficulty(), playerBind->save->GetPlayerCount(), playerBind->save->GetGroupCount(), playerBind->save->CanReset());
                         if (groupBind)

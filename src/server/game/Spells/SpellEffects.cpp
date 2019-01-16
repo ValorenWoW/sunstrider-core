@@ -482,13 +482,8 @@ void Spell::EffectSchoolDMG(uint32 effect_idx)
         }
         case SPELLFAMILY_WARRIOR:
         {
-            // Bloodthirst
-            if (m_spellInfo->SpellFamilyFlags & 0x40000000000LL)
-            {
-                damage = uint32(damage * (_unitCaster->GetTotalAttackPowerValue(BASE_ATTACK, unitTarget)) / 100);
-            }
             // Shield Slam
-            else if (m_spellInfo->SpellFamilyFlags & 0x100000000LL)
+            if (m_spellInfo->SpellFamilyFlags & 0x100000000LL)
                 damage += int32(_unitCaster->GetShieldBlockValue());
             // Victory Rush
             else if (m_spellInfo->SpellFamilyFlags & 0x10000000000LL)
@@ -1106,38 +1101,6 @@ void Spell::EffectDummy(uint32 i)
                     if(!unitTarget || unitTarget->GetTypeId()!=TYPEID_UNIT)
                         return;
                     (unitTarget->ToCreature())->SetDeathState(JUST_RESPAWNED);
-                    return;
-                }
-                case 12162:                                 // Deep wounds
-                case 12850:                                 // (now good common check for this spells)
-                case 12868:
-                {
-                    if(!unitTarget || !_unitCaster)
-                        return;
-
-                    float localDamage;
-                    // DW should benefit of attack power, damage percent mods etc.
-                    // TODO: check if using offhand damage is correct and if it should be divided by 2
-                    if (_unitCaster->HaveOffhandWeapon() && _unitCaster->GetAttackTimer(BASE_ATTACK) > _unitCaster->GetAttackTimer(OFF_ATTACK))
-                        localDamage = (_unitCaster->GetFloatValue(UNIT_FIELD_MINOFFHANDDAMAGE) + _unitCaster->GetFloatValue(UNIT_FIELD_MAXOFFHANDDAMAGE))/2;
-                    else
-                        localDamage = (_unitCaster->GetFloatValue(UNIT_FIELD_MINDAMAGE) + _unitCaster->GetFloatValue(UNIT_FIELD_MAXDAMAGE))/2;
-
-                    switch (m_spellInfo->Id)
-                    {
-                        case 12850: localDamage *= 0.2f; break;
-                        case 12162: localDamage *= 0.4f; break;
-                        case 12868: localDamage *= 0.6f; break;
-                        default:
-                            TC_LOG_ERROR("FIXME","Spell::EffectDummy: Spell %u not handled in DW",m_spellInfo->Id);
-                            return;
-                    };
-
-                    int32 deepWoundsDotBasePoints0 = int32(damage / 4);
-                    CastSpellExtraArgs args;
-                    args.TriggerFlags = TRIGGERED_FULL_MASK;
-                    args.AddSpellBP0(int32(deepWoundsDotBasePoints0));
-                    m_caster->CastSpell(unitTarget, 12721, args);
                     return;
                 }
                 case 12975:                                 //Last Stand
@@ -1857,27 +1820,17 @@ void Spell::EffectDummy(uint32 i)
                 {
                     if (!_unitCaster)
                         break;
-                    uint32 healthPerc = uint32((float(_unitCaster->GetHealth())/ _unitCaster->GetMaxHealth())*100);
-                    int32 melee_mod = 10;
-                    int32 spell_mod = 12;
-                    if (healthPerc <= 40) {
-                        melee_mod = 30;
-                        spell_mod = 40;
-                    }
-                    if (healthPerc < 100 && healthPerc > 40) {
-                        melee_mod = 10+(100-healthPerc)/3;
-                        spell_mod = melee_mod + 1;
-                    }
 
-                    int32 hasteModBasePoints0 = melee_mod;          // (EffectBasePoints[0]+1)-1+(5-melee_mod) = (melee_mod-1+1)-1+5-melee_mod = 5-1
-                    int32 hasteModBasePoints1 = (5-melee_mod);
-                    int32 hasteModBasePoints2 = spell_mod;
+                    //from WoWWiki formula: https://wow.gamepedia.com/index.php?title=Berserking&oldid=1422871
+                    float missingPerc = float(_unitCaster->GetMaxHealth() - _unitCaster->GetHealth()) / _unitCaster->GetMaxHealth();
+                    int32 haste = 10.0f + 33.0f * missingPerc;
+                    if (haste > 30)
+                        haste = 30;
 
-                    CastSpellExtraArgs args;
-                    args.TriggerFlags = TRIGGERED_FULL_MASK;
-                    args.AddSpellMod(SPELLVALUE_BASE_POINT0, int32(hasteModBasePoints0));
-                    args.AddSpellMod(SPELLVALUE_BASE_POINT1, int32(hasteModBasePoints1));
-                    args.AddSpellMod(SPELLVALUE_BASE_POINT2, int32(hasteModBasePoints2));
+                    CastSpellExtraArgs args(TRIGGERED_FULL_MASK);
+                    args.AddSpellMod(SPELLVALUE_BASE_POINT0, int32(haste));
+                    args.AddSpellMod(SPELLVALUE_BASE_POINT1, int32(haste));
+                    args.AddSpellMod(SPELLVALUE_BASE_POINT2, int32(haste));
                     _unitCaster->CastSpell(_unitCaster, 26635, args);
                     return;
                 }
@@ -2022,43 +1975,6 @@ void Spell::EffectDummy(uint32 i)
                 case 31231:                                 // Cheat Death
                 {
                     m_caster->CastSpell(m_caster,45182, true);
-                    return;
-                }
-                case 5938:                                  // Shiv
-                {
-                    if(m_caster->GetTypeId() != TYPEID_PLAYER)
-                        return;
-
-                    Player *pCaster = (m_caster->ToPlayer());
-
-                    Item *item = pCaster->GetWeaponForAttack(OFF_ATTACK);
-                    if(!item)
-                        return;
-
-                    // apply poison
-                    if (uint32 enchant_id = item->GetEnchantmentId(TEMP_ENCHANTMENT_SLOT))
-                    {
-                        if(SpellItemEnchantmentEntry const *pEnchant = sSpellItemEnchantmentStore.LookupEntry(enchant_id))
-                        {
-                            for (int s=0;s<3;s++)
-                            {
-                                if(pEnchant->type[s]!=ITEM_ENCHANTMENT_TYPE_COMBAT_SPELL)
-                                    continue;
-
-                                SpellInfo const* combatEntry = sSpellMgr->GetSpellInfo(pEnchant->spellid[s]);
-                                if(!combatEntry || combatEntry->Dispel != DISPEL_POISON)
-                                    continue;
-
-                                CastSpellExtraArgs args;
-                                args.TriggerFlags = TRIGGERED_FULL_MASK;
-                                args.SetCastItem(item);
-                                m_caster->CastSpell(unitTarget, combatEntry->Id, args);
-                            }
-                        }
-                    }
-
-                    //dmg + combo point effect
-                    m_caster->CastSpell(unitTarget, 5940, true);
                     return;
                 }
             }
@@ -2262,40 +2178,6 @@ void Spell::EffectDummy(uint32 i)
                 args.AddSpellBP0(int32(EffectBasePoints0));
                 args.SetOriginalCaster(m_originalCasterGUID);
                 m_caster->CastSpell(unitTarget, 39609, args);
-                return;
-            }
-
-            // Flametongue Weapon Proc
-            if(m_spellInfo->SpellFamilyFlags &0x0000000000200000LL && _unitCaster)
-            {
-                if(m_caster->GetTypeId()!=TYPEID_PLAYER)
-                    return;
-
-                if(!m_CastItem || !m_CastItem->IsEquipped())
-                    return;
-
-                WeaponAttackType attType=BASE_ATTACK;
-                if (m_CastItem->GetSlot() == EQUIPMENT_SLOT_OFFHAND)
-                    attType=OFF_ATTACK;
-
-                float wspeed = _unitCaster->GetAttackTime(attType)/1000.0f;
-                if (wspeed > 4.0) wspeed = 4.0f;
-                if (wspeed < 1.3) wspeed = 1.3f;
-                int32 EffectBasePoints0 = uint32(damage*wspeed/100.f);
-                _unitCaster->CastSpell(unitTarget, 10444, { SPELLVALUE_BASE_POINT0, EffectBasePoints0 });
-                return;
-            }
-            // Flametongue Totem Proc
-            if(m_spellInfo->SpellFamilyFlags &0x0000000400000000LL && _unitCaster)
-            {
-                if(m_caster->GetTypeId()!=TYPEID_PLAYER)
-                    return;
-
-                float wspeed = _unitCaster->GetAttackTime(BASE_ATTACK)/1000.0f;
-                if (wspeed > 4.0) wspeed = 4.0f;
-                if (wspeed < 1.3) wspeed = 1.3f;
-                int32 EffectBasePoints0 = uint32(damage*wspeed/100.f);
-                _unitCaster->CastSpell(unitTarget, 16368, { SPELLVALUE_BASE_POINT0, EffectBasePoints0 });
                 return;
             }
 
@@ -3554,6 +3436,12 @@ void Spell::SendLoot(ObjectGuid guid, LootType loottype)
                 player->GetName().c_str(), player->GetGUID().GetCounter(), gameObjTarget->GetEntry(), gameObjTarget->GetGUID().GetCounter());
             return;
         }
+        // special case, already has GossipHello inside so return and avoid calling twice
+        if (gameObjTarget->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
+        {
+            gameObjTarget->Use(player);
+            return;
+        }
 
         player->PlayerTalkClass->ClearMenus();
         if (gameObjTarget->AI()->GossipHello(player))
@@ -3576,34 +3464,6 @@ void Spell::SendLoot(ObjectGuid guid, LootType loottype)
                 // triggering linked GO
                 if(uint32 trapEntry = gameObjTarget->GetGOInfo()->spellFocus.linkedTrapId)
                     gameObjTarget->TriggeringLinkedGameObject(trapEntry, player);
-                return;
-
-            case GAMEOBJECT_TYPE_GOOBER:
-                // goober_scripts can be triggered if the player don't have the quest
-                if (gameObjTarget->GetGOInfo()->goober.eventId)
-                    gameObjTarget->GetMap()->ScriptsStart(sEventScripts, gameObjTarget->GetGOInfo()->goober.eventId, player, gameObjTarget);
-
-                // cast goober spell
-                if (gameObjTarget->GetGOInfo()->goober.questId)
-                    ///Quest require to be active for GO using
-                    if(player->GetQuestStatus(gameObjTarget->GetGOInfo()->goober.questId) != QUEST_STATUS_INCOMPLETE)
-                        return;
-
-                gameObjTarget->GetMap()->ScriptsStart(sGameObjectScripts, gameObjTarget->GetSpawnId(), player, gameObjTarget);
-
-                gameObjTarget->AddUniqueUse(player);
-                gameObjTarget->SetLootState(GO_JUST_DEACTIVATED);
-
-                //TODO? Objective counting called without spell check but with quest objective check
-                // if send spell id then this line will duplicate to spell casting call (double counting)
-                // So we or have this line and not required in quest_template have reqSpellIdN
-                // or must remove this line and required in DB have data in quest_template have reqSpellIdN for all quest using cases.
-                player->CastedCreatureOrGO(gameObjTarget->GetEntry(), gameObjTarget->GetGUID(), 0);
-
-                // triggering linked GO
-                if(uint32 trapEntry = gameObjTarget->GetGOInfo()->goober.linkedTrapId)
-                    gameObjTarget->TriggeringLinkedGameObject(trapEntry, player);
-
                 return;
 
             case GAMEOBJECT_TYPE_CHEST:
@@ -4282,7 +4142,7 @@ void Spell::EffectEnchantItemPerm(uint32 i)
         // remove old enchanting before applying new if equipped
         item_owner->ApplyEnchantment(itemTarget,PERM_ENCHANTMENT_SLOT,false);
 
-        itemTarget->SetEnchantment(PERM_ENCHANTMENT_SLOT, enchant_id, 0, 0);
+        itemTarget->SetEnchantment(PERM_ENCHANTMENT_SLOT, enchant_id, 0, 0, m_caster->GetGUID());
 
         // add new enchanting if equipped
         item_owner->ApplyEnchantment(itemTarget,PERM_ENCHANTMENT_SLOT,true);
@@ -4421,7 +4281,7 @@ void Spell::EffectEnchantItemTmp(uint32 i)
     // remove old enchanting before applying new if equipped
     item_owner->ApplyEnchantment(itemTarget,TEMP_ENCHANTMENT_SLOT,false);
 
-    itemTarget->SetEnchantment(TEMP_ENCHANTMENT_SLOT, enchant_id, duration*1000, 0);
+    itemTarget->SetEnchantment(TEMP_ENCHANTMENT_SLOT, enchant_id, duration*1000, 0, m_caster->GetGUID());
 
     // add new enchanting if equipped
     item_owner->ApplyEnchantment(itemTarget,TEMP_ENCHANTMENT_SLOT,true);
@@ -6212,7 +6072,7 @@ void Spell::EffectEnchantHeldItem(uint32 i)
     Player* item_owner = unitTarget->ToPlayer();
     Item* item = item_owner->GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_MAINHAND);
 
-    if(!item )
+    if (!item)
         return;
 
     // must be equipped
@@ -6222,11 +6082,14 @@ void Spell::EffectEnchantHeldItem(uint32 i)
     if (m_spellInfo->Effects[i].MiscValue)
     {
         uint32 enchant_id = m_spellInfo->Effects[i].MiscValue;
-        int32 duration = m_spellInfo->GetDuration();          //Try duration index first ..
+        int32 duration = m_spellInfo->GetDuration(); //Try duration index first ..
         if(!duration)
-            duration = damage;//+1;            //Base points after ..
+            duration = damage;//+1;                  //Base points after ..
         if(!duration)
-            duration = 10;                                  //10 seconds for enchants which don't have listed duration
+            duration = 10 * IN_MILLISECONDS;         //10 seconds for enchants which don't have listed duration
+
+        if (m_spellInfo->Id == 14792) // Venomhide Poison
+            duration = 5 * MINUTE * IN_MILLISECONDS;
 
         SpellItemEnchantmentEntry const *pEnchant = sSpellItemEnchantmentStore.LookupEntry(enchant_id);
         if(!pEnchant)
@@ -6240,8 +6103,8 @@ void Spell::EffectEnchantHeldItem(uint32 i)
             return;
 
         // Apply the temporary enchantment
-        item->SetEnchantment(slot, enchant_id, duration*1000, 0);
-        item_owner->ApplyEnchantment(item,slot,true);
+        item->SetEnchantment(slot, enchant_id, duration, 0, m_caster->GetGUID());
+        item_owner->ApplyEnchantment(item, slot, true);
     }
 }
 

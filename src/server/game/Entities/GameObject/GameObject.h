@@ -95,7 +95,7 @@ struct TC_GAME_API GameObjectTemplate
             uint32 serverOnly;                              //2
             uint32 large;                                   //3
             uint32 floatOnWater;                            //4
-            uint32 questID;                                 //5
+            int32 questID;                                  //5
         } _generic;
         //6 GAMEOBJECT_TYPE_TRAP
         struct
@@ -144,7 +144,7 @@ struct TC_GAME_API GameObjectTemplate
         struct
         {
             uint32 lockId;                                  //0 -> Lock.dbc
-            uint32 questId;                                 //1
+            int32 questId;                                  //1
             uint32 eventId;                                 //2
             uint32 autoCloseTime;                           //3
             uint32 customAnim;                              //4
@@ -386,6 +386,7 @@ struct TC_GAME_API GameObjectTemplate
 
     std::string AIName;
     uint32 ScriptId;
+    uint32 patch;
     WorldPacket QueryData[TOTAL_LOCALES];
 };
 
@@ -652,6 +653,9 @@ class TC_GAME_API GameObject : public WorldObject, public GridObject<GameObject>
         uint32 m_groupLootTimer;                            // (msecs)timer used for group loot
         ObjectGuid::LowType lootingGroupLowGUID;
 
+        GameObject* GetLinkedTrap();
+        void SetLinkedTrap(GameObject* linkedTrap) { m_linkedTrap = linkedTrap->GetGUID(); }
+
         bool HasQuest(uint32 quest_id) const override;
         bool HasInvolvedQuest(uint32 quest_id) const override;
         bool ActivateToQuest(Player *pTarget) const;
@@ -708,11 +712,11 @@ class TC_GAME_API GameObject : public WorldObject, public GridObject<GameObject>
 
         void UpdateModelPosition();
 
-        void EventInform(uint32 eventId);
+        void EventInform(uint32 eventId, WorldObject* invoker = nullptr);
 
         // There's many places not ready for dynamic spawns. This allows them to live on for now.
         void SetRespawnCompatibilityMode(bool mode = true) { m_respawnCompatibilityMode = mode; }
-        bool GetRespawnCompatibilityMode() { return m_respawnCompatibilityMode; }
+        bool GetRespawnCompatibilityMode() const { return m_respawnCompatibilityMode; }
 
         uint32 GetScriptId() const;
         GameObjectAI* AI() const { return m_AI; }
@@ -772,6 +776,8 @@ class TC_GAME_API GameObject : public WorldObject, public GridObject<GameObject>
         uint32 m_lootRecipientGroup;
         uint16 m_LootMode;                                  // bitmask, default LOOT_MODE_DEFAULT, determines what loot will be lootable
         uint32 m_lootGenerationTime;
+
+        ObjectGuid m_linkedTrap;
     private:
 		void RemoveFromOwner();
 

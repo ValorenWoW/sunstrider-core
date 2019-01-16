@@ -1,0 +1,1 @@
+UPDATE creature_template SET faction = 16 WHERE entry IN (20045, 20046, 20047, 20048, 20049, 20050);

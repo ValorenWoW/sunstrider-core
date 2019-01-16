@@ -456,8 +456,9 @@ public:
     ~SpellInfo();
 
     uint32 GetCategory() const;
+    bool HasEffect(SpellEffects effect) const;
+    bool HasEffect(SpellEffects effect, uint8 effectIndex) const;
     bool HasEffectByEffectMask(SpellEffects effect, SpellEffectMask effectMask = SPELL_EFFECT_MASK_ALL) const;
-    bool HasEffect(SpellEffects effect, uint8 effectIndex = 0) const;
     bool HasAura(AuraType aura) const;
     bool HasAuraEffect(AuraType aura) const;
     bool HasAreaAuraEffect() const;
@@ -500,11 +501,14 @@ public:
     bool IsBinarySpell() const;
 
     bool IsProfessionOrRiding() const;
+    bool IsProfession() const;
+    bool IsPrimaryProfession() const;
+    bool IsPrimaryProfessionFirstRank() const;
     bool IsAbilityLearnedWithProfession() const;
 
-    /** Some spells, such as dispells, can be positive or negative depending on target */
-    bool IsPositive() const;
-    /** Some effects, such as dispells, can be positive or negative depending on target */
+    /** Some spells, such as dispels, can be positive or negative depending on target */
+    bool IsPositive(bool hostileTarget = false) const;
+    /** Some effects, such as dispels, can be positive or negative depending on target */
     bool IsPositiveEffect(uint8 effIndex, bool hostileTarget = false) const;
 
     uint32 CalcCastTime(Spell* spell = nullptr) const;

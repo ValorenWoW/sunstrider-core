@@ -33,6 +33,7 @@ enum ShamanSpells
     SPELL_SHAMAN_CHAIN_LIGHTNING_OVERLOAD_R1    = 45297,
     SPELL_SHAMAN_LIGHTNING_SHIELD_DAMAGE_R1     = 26364,
     SPELL_SHAMAN_SHAMANISTIC_RAGE_PROC          = 30824,
+    SPELL_SHAMAN_FLAMETONGUE_ATTACK_TOTEM       = 16368,
 };
 
 //TODO: should this be moved to DB?
@@ -500,7 +501,6 @@ public:
     }
 };
 
-// 30823 - Shamanistic Rage
 class spell_sha_shamanistic_rage : public SpellScriptLoader
 {
 public:
@@ -538,6 +538,79 @@ public:
     }
 };
 
+// -8253 Flametongue totem proc
+// -8026 Flametongue proc
+template <uint32 procSpellId>
+class spell_sha_flametongue_proc : public SpellScriptLoader
+{
+public:
+    spell_sha_flametongue_proc(char const* ScriptName) : SpellScriptLoader(ScriptName) { }
+
+    class spell_sha_flametongue_proc_SpellScript : public SpellScript
+    {
+        PrepareSpellScript(spell_sha_flametongue_proc_SpellScript);
+
+        bool Validate(SpellInfo const* /*spellInfo*/) override
+        {
+            return ValidateSpellInfo({ procSpellId });
+        }
+
+        void HandleDummy(SpellEffIndex /*effIndex*/, int32& damage)
+        {
+            if (GetCaster()->GetTypeId() != TYPEID_PLAYER)
+                return;
+
+            Player* player = GetCaster()->ToPlayer();
+            Unit* target = GetHitUnit();
+            WeaponAttackType attType = BASE_ATTACK;
+            Item* item = GetSpell()->m_CastItem;
+            if (!item)
+                return;
+
+            if (item->GetSlot() == EQUIPMENT_SLOT_OFFHAND)
+                attType = OFF_ATTACK;
+
+            float basePoints = damage;
+
+            // Flametongue max damage is normalized based on a 4.0 speed weapon
+            // Tooltip says max damage = BasePoints / 25, so BasePoints / 25 / 4 to get base damage per 1.0s AS
+            float attackSpeed = player->GetAttackTime(attType) / 1000.f;
+            float fireDamage = basePoints / 100.0f;
+            fireDamage *= attackSpeed;
+
+            // clip value between (BasePoints / 77) and (BasePoints / 25) as the tooltip indicates
+            RoundToInterval(fireDamage, basePoints / 77.0f, basePoints / 25.0f);
+
+            // Calculate Spell Power scaling
+            float spellPowerBonus = player->SpellBaseDamageBonusDone(SPELL_SCHOOL_MASK_FIRE);
+            spellPowerBonus += target->GetTotalAuraModifierByMiscMask(SPELL_AURA_MOD_DAMAGE_TAKEN, SPELL_SCHOOL_MASK_FIRE);
+
+            // calculate penalty from passive aura as is the one with level
+            float const factorMod = player->CalculateSpellpowerCoefficientLevelPenalty(GetSpellInfo());
+
+            float const spCoeff = 0.03811f; //from TLK, no idea if this is tbc as well
+            spellPowerBonus *= spCoeff * attackSpeed * factorMod;
+
+            // All done, now proc damage
+            CastSpellExtraArgs args(true);
+            args
+                .SetCastItem(item)
+                .AddSpellBP0(fireDamage + spellPowerBonus);
+            player->CastSpell(target, procSpellId, args);
+        }
+
+        void Register() override
+        {
+            OnEffectHitTarget += SpellEffectFn(spell_sha_flametongue_proc_SpellScript::HandleDummy, EFFECT_0, SPELL_EFFECT_DUMMY);
+        }
+    };
+
+    SpellScript* GetSpellScript() const override
+    {
+        return new spell_sha_flametongue_proc_SpellScript();
+    }
+};
+
 void AddSC_shaman_spell_scripts()
 {
     new spell_sham_imprvd_weapon_totems();
@@ -549,4 +622,6 @@ void AddSC_shaman_spell_scripts()
     new spell_sha_earth_shield();
     new spell_sha_nature_guardian();
     new spell_sha_shamanistic_rage();
+    new spell_sha_flametongue_proc<SPELL_SHAMAN_FLAMETONGUE_ATTACK>("spell_sha_flametongue_proc");
+    new spell_sha_flametongue_proc<SPELL_SHAMAN_FLAMETONGUE_ATTACK_TOTEM>("spell_sha_flametongue_totem_proc");
 }

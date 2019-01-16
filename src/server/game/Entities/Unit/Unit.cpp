@@ -50,6 +50,7 @@
 #include "MovementPacketBuilder.h"
 #include "MovementPacketSender.h"
 #include "MoveSplineInit.h"
+#include "UnitAI.h"
 
 #include <math.h>
 #include <array>
@@ -443,8 +444,10 @@ void Unit::Update(uint32 p_time)
     UpdateSplineMovement(p_time);
     i_motionMaster->Update(p_time);
 
-    if (!i_AI && (GetTypeId() != TYPEID_PLAYER || IsCharmed()))
+    if (!GetAI() && (GetTypeId() != TYPEID_PLAYER || IsCharmed()))
         UpdateCharmAI();
+
+    RefreshAI();
 }
 
 bool Unit::HaveOffhandWeapon() const
@@ -608,20 +611,23 @@ uint32 Unit::DealDamage(Unit* attacker, Unit* pVictim, uint32 damage, CleanDamag
     if (!pVictim->IsAlive() || pVictim->IsInFlight() || (pVictim->GetTypeId() == TYPEID_UNIT && (pVictim->ToCreature())->IsInEvadeMode()))
         return 0;
 
-    if (attacker && pVictim->GetTypeId() == TYPEID_PLAYER && attacker != pVictim)
+    if (attacker && attacker != pVictim)
     {
-        // Signal to pets that their owner was attacked - except when DOT.
-        if (damagetype != DOT)
+        if (pVictim->GetTypeId() == TYPEID_PLAYER)
         {
-            for (Unit* controlled : pVictim->m_Controlled)
-                if (Creature* cControlled = controlled->ToCreature())
-                    if (CreatureAI* controlledAI = cControlled->AI())
-                        controlledAI->OwnerAttackedBy(attacker);
-        }
+            //sunstrider: moved out of last check, some damage are caused by self
+            if (pVictim->ToPlayer()->GetCommandStatus(CHEAT_GOD))
+                return 0;
 
-        //sunstrider: moved out of last check, some damage are caused by self
-        if (pVictim->ToPlayer()->GetCommandStatus(CHEAT_GOD))
-            return 0;
+            // Signal to pets that their owner was attacked - except when DOT.
+            if (damagetype != DOT)
+            {
+                for (Unit* controlled : pVictim->m_Controlled)
+                    if (Creature* cControlled = controlled->ToCreature())
+                        if (CreatureAI* controlledAI = cControlled->AI())
+                            controlledAI->OwnerAttackedBy(attacker);
+            }
+        }
     }
 
     // Kidney Shot hack
@@ -1582,7 +1588,6 @@ uint32 Unit::CalcArmorReducedDamage(Unit const* attacker, Unit* pVictim, const u
     armor += attacker->GetTotalAuraModifierByMiscMask(SPELL_AURA_MOD_TARGET_RESISTANCE, SPELL_SCHOOL_MASK_NORMAL);
 
 #ifdef LICH_KING
-
     AuraEffectList const& resIgnoreAurasAb = GetAuraEffectsByType(SPELL_AURA_MOD_ABILITY_IGNORE_TARGET_RESIST);
     for (AuraEffectList::const_iterator j = resIgnoreAurasAb.begin(); j != resIgnoreAurasAb.end(); ++j)
     {
@@ -1910,7 +1915,7 @@ static const SpellPartialResistDistribution SPELL_PARTIAL_RESIST_DISTRIBUTION = 
     // We must exclude full resist chance from it, we already rolled for it as miss type in attack table (so n-1)
     uint8 portion = std::min(uint8(die.roll(random)), uint8(NUM_SPELL_PARTIAL_RESISTS - 1));
     // Simulate old retail rouding error (full hit cut-off) for: NPC non-binary spells; environmental damage (e.g. lava); elemental attacks
-    if (portion == SPELL_PARTIAL_RESIST_NONE && !spellInfo->IsBinarySpell() && averageResist > 54.0f && (info.GetDamageType() == DIRECT_DAMAGE || !attacker->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED)))
+    if (portion == SPELL_PARTIAL_RESIST_NONE && (!spellInfo || !spellInfo->IsBinarySpell()) && averageResist > 54.0f && (info.GetDamageType() == DIRECT_DAMAGE || !attacker->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED)))
         ++portion;
     // To get resisted part ratio, we exclude zero outcome (it is n-1 anyway, so we reuse local var)
     //return (float(portion) / float(NUM_SPELL_PARTIAL_RESISTS));
@@ -2747,7 +2752,7 @@ float Unit::MeleeSpellMissChance(const Unit* victim, WeaponAttackType attType, i
         missChance -= victim->GetTotalAuraModifier(SPELL_AURA_MOD_ATTACKER_MELEE_HIT_CHANCE);
 
     // cmangos: For elemental melee auto-attacks: full resist outcome converted into miss chance (original research on combat logs)
-    if (attType != RANGED_ATTACK && !spellId)
+    if (attType != RANGED_ATTACK && !spellId && GetMeleeDamageSchoolMask() & SPELL_SCHOOL_MASK_MAGIC)
     {
         const float resistance = Unit::CalculateAverageResistReduction(this, GetMeleeDamageSchoolMask(), victim) * 100;
         if (const uint32 uindex = uint32(resistance * 100))
@@ -7154,6 +7159,10 @@ void Unit::AttackedTarget(Unit* target, bool canInitialAggro)
     if (Unit* targetOwner = target->GetCharmerOrOwner())
         targetOwner->EngageWithTarget(this);
 
+    //from cmangos: Since patch 1.5.0 sitting characters always stand up on attack (even if stunned) (sun: moved to AttackedTarget instead of DealDamage, we want to to be triggered even on a miss)
+    if (!target->IsStandState() && (target->GetTypeId() == TYPEID_PLAYER || !target->HasUnitState(UNIT_STATE_STUNNED)))
+        target->SetStandState(UNIT_STAND_STATE_STAND);
+
 #ifdef LICH_KING
     //Patch 3.0.8: All player spells which cause a creature to become aggressive to you will now also immediately cause the creature to be tapped.
     if (Creature* creature = target->ToCreature())
@@ -7955,11 +7964,18 @@ void Unit::SetAuraStack(uint32 spellId, Unit* target, uint32 stack)
         aura->SetStackAmount(stack);
 }
 
-
-void Unit::SendPlaySpellVisual(uint32 id)
+void Unit::SendPlaySpellVisual(uint32 id) const
 {
     WorldPacket data(SMSG_PLAY_SPELL_VISUAL, 8 + 4); //LK OK
     data << uint64(GetGUID());
+    data << uint32(id); // SpellVisualKit.dbc index
+    SendMessageToSet(&data, false);
+}
+
+void Unit::SendPlaySpellImpact(ObjectGuid guid, uint32 id) const
+{
+    WorldPacket data(SMSG_PLAY_SPELL_IMPACT, 8 + 4); //LK OK
+    data << uint64(guid); // target
     data << uint32(id); // SpellVisualKit.dbc index
     SendMessageToSet(&data, false);
 }
@@ -8005,7 +8021,7 @@ bool Unit::ApplyDiminishingToDuration(SpellInfo const* auraSpellInfo, bool trigg
         return true;
 
     //Hack to avoid incorrect diminishing on mind control
-    if (group == DIMINISHING_CHARM && caster == this)
+    if (group == DIMINISHING_MIND_CONTROL && caster == this)
         return true;
 
     int32 const limitDuration = auraSpellInfo->GetDiminishingReturnsLimitDuration(triggered);
@@ -8617,17 +8633,30 @@ void Unit::ApplyMaxPowerMod(Powers power, uint32 val, bool apply)
     }
 }
 
-uint32 Unit::GetCreatePowers( Powers power ) const
+uint32 Unit::GetCreatePowerValue(Powers power) const
 {
     // POWER_FOCUS and POWER_HAPPINESS only have hunter pet
     switch(power)
     {
-        case POWER_MANA:      return GetCreateMana();
-        case POWER_RAGE:      return 1000;
-        case POWER_FOCUS:     return (GetTypeId()==TYPEID_PLAYER || !((Creature const*)this)->IsPet() || ((Pet const*)this)->getPetType()!=HUNTER_PET ? 0 : 100);
-        case POWER_ENERGY:    return 100;
-        case POWER_HAPPINESS: return (GetTypeId()==TYPEID_PLAYER || !((Creature const*)this)->IsPet() || ((Pet const*)this)->getPetType()!=HUNTER_PET ? 0 : 1050000);
-        default:              break;
+        case POWER_MANA:      
+            return GetCreateMana();
+        case POWER_RAGE:      
+            return 1000;
+        case POWER_FOCUS:
+            return (GetTypeId() == TYPEID_PLAYER || !((Creature const*)this)->IsPet() || ((Pet const*)this)->getPetType() != HUNTER_PET ? 0 : 100);
+        case POWER_ENERGY:    
+            return 100;
+        case POWER_HAPPINESS:
+            return (GetTypeId() == TYPEID_PLAYER || !((Creature const*)this)->IsPet() || ((Pet const*)this)->getPetType() != HUNTER_PET ? 0 : 1050000);
+        case POWER_HEALTH:
+#ifdef LICH_KING
+        case POWER_RUNIC_POWER:
+            return 1000;
+        case POWER_RUNE:
+#endif
+            return 0;
+        default:             
+            break;
     }
 
     return 0;
@@ -8645,10 +8674,35 @@ void Unit::AIUpdateTick(uint32 diff)
     }
 }
 
+void Unit::PushAI(UnitAI* newAI)
+{
+    i_AIs.emplace(newAI);
+}
+
 void Unit::SetAI(UnitAI* newAI)
 {
-    ASSERT(!m_aiLocked, "Attempt to replace AI during AI update tick");
-    i_AI.reset(newAI);
+    PushAI(newAI);
+    RefreshAI();
+}
+
+bool Unit::PopAI()
+{
+    if (!i_AIs.empty())
+    {
+        i_AIs.pop();
+        return true;
+    }
+    else
+        return false;
+}
+
+void Unit::RefreshAI()
+{
+    ASSERT(!m_aiLocked, "Tried to change current AI during UpdateAI()");
+    if (i_AIs.empty())
+        i_AI = nullptr;
+    else
+        i_AI = i_AIs.top();
 }
 
 void Unit::ScheduleAIChange()
@@ -8656,25 +8710,20 @@ void Unit::ScheduleAIChange()
     bool const charmed = IsCharmed();
     // if charm is applied, we can't have disabled AI already, and vice versa
     if (charmed)
-        ASSERT(!i_disabledAI, "Attempt to schedule charm AI change on unit that already has disabled AI");
-    else if (GetTypeId() != TYPEID_PLAYER)
-        ASSERT(i_disabledAI, "Attempt to schedule charm ID change on unit that doesn't have disabled AI");
-    if (charmed)
-        i_disabledAI = std::move(i_AI);
-    else if (m_aiLocked)
-    {
-        ASSERT(!i_lockedAILifetimeExtension, "Attempt to schedule multiple charm AI changes during one update");
-        i_lockedAILifetimeExtension = std::move(i_AI); // AI needs to live just a bit longer to finish its UpdateAI
-    }
+        PushAI(nullptr);
     else
-        i_AI.reset();
+    {
+        RestoreDisabledAI();
+        PushAI(nullptr); //This could actually be PopAI() to get the previous AI but it's required atm to trigger UpdateCharmAI()
+    }
 }
 
 void Unit::RestoreDisabledAI()
 {
-    ASSERT((GetTypeId() == TYPEID_PLAYER) || i_disabledAI, "Attempt to restore disabled AI on creature without disabled AI");
-    i_AI = std::move(i_disabledAI);
-    i_lockedAILifetimeExtension.reset();
+    // Keep popping the stack until we either reach the bottom or find a valid AI
+    while (PopAI())
+        if (GetTopAI())
+            return;
 }
 
 void Unit::UpdateResistanceBuffModsMod(SpellSchools school)
@@ -8906,14 +8955,16 @@ void Unit::UpdateCharmAI()
         }
 
         ASSERT(newAI);
-        i_AI.reset(newAI);
+        SetAI(newAI);
         newAI->OnCharmed(true);
     }
     else
     {
         RestoreDisabledAI();
-        if (i_AI)
-            i_AI->OnCharmed(true);
+        // Hack: this is required because we want to call OnCharmed(true) on the restored AI
+        RefreshAI();
+        if (UnitAI* ai = GetAI())
+            ai->OnCharmed(true);
     }
 }
 
@@ -9504,7 +9555,7 @@ void Unit::UpdateReactives( uint32 p_time )
                         ModifyAuraState(AURA_STATE_CRIT, false);
                     break;
                 case REACTIVE_HUNTER_CRIT:
-                    if ( GetClass() == CLASS_HUNTER && HasAuraState(AURA_STATE_HUNTER_CRIT_STRIKE) )
+                    if (GetClass() == CLASS_HUNTER && HasAuraState(AURA_STATE_HUNTER_CRIT_STRIKE))
                         ModifyAuraState(AURA_STATE_HUNTER_CRIT_STRIKE, false);
                     break;
                 case REACTIVE_OVERPOWER:
@@ -10904,6 +10955,7 @@ uint32 Unit::GetModelForForm(ShapeshiftForm form) const
 
 uint32 Unit::GetModelForTotem(PlayerTotemType totemType)
 {
+    //Sun: Don't use for creatures, they use bad creatures types (for ex: Fire totem for Ice totem 18975)
     switch (GetRace())
     {
 #ifdef LICH_KING
@@ -14436,6 +14488,10 @@ void Unit::ProcSkillsAndReactives(bool isVictim, Unit* procTarget, uint32 typeMa
     // For melee/ranged based attack need update skills and set some Aura states if victim present
     if (typeMask & MELEE_BASED_TRIGGER_MASK && procTarget)
     {
+        if (GetTypeId() == TYPEID_UNIT)
+            if (CreatureAI* ai = ToCreature()->AI())
+                ai->OnMeleeProcHit(procTarget, hitMask);
+
         // Update skills here for players
         if (GetTypeId() == TYPEID_PLAYER)
         {
@@ -14494,6 +14550,14 @@ void Unit::ProcSkillsAndReactives(bool isVictim, Unit* procTarget, uint32 typeMa
                 {
                     ToPlayer()->AddComboPoints(procTarget, 1);
                     StartReactiveTimer(REACTIVE_OVERPOWER);
+                }
+                if (hitMask & PROC_HIT_DODGE)
+                {
+                    if (GetTypeId() == TYPEID_PLAYER && GetClass() == CLASS_WARRIOR)
+                    {
+                        ToPlayer()->AddComboPoints(procTarget, 1);
+                        StartReactiveTimer(REACTIVE_OVERPOWER);
+                    }
                 }
                 else if ((hitMask & PROC_HIT_CRITICAL))
                 {

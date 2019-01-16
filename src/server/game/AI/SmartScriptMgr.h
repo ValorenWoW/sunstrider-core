@@ -186,7 +186,7 @@ enum SMART_EVENT
     SMART_EVENT_GO_LOOT_STATE_CHANGED       = 104,      // stateMask (LootState)
     SMART_EVENT_AFFECTED_BY_MECHANIC        = 105,      // checkTimer, mechanicMask
     SMART_EVENT_EVENT_TEMPLATE_PHASE_CHANGE = 106,      // event phase mask (<= SMART_EVENT_PHASE_ALL)
-    
+    SMART_EVENT_ON_MELEE_PROC_HIT           = 107,      // none
     
     SMART_EVENT_END                      ,
 };
@@ -470,6 +470,11 @@ struct SmartEvent
             uint32 repeat;
             uint32 mechanicMask;
         } affectedByMechanic;
+
+        struct
+        {
+            uint32 hitMask;
+        } meleeProcHit;
 
         struct
         {
@@ -1716,10 +1721,13 @@ class TC_GAME_API SmartWaypointMgr
         }
 
         void LoadFromDB();
-        WaypointPath const* GetPath(uint32 id);
+
+        typedef std::unordered_map<uint32, WaypointPath> SmartWaypointStore;
+        WaypointPath const* GetPath(uint32 id) const;
+        SmartWaypointStore const& GetWaypointStore() const { return _waypointStore; }
 
     private:
-        std::unordered_map<uint32, WaypointPath> _waypointStore;
+        SmartWaypointStore _waypointStore;
 };
 
 // all events for a single entry

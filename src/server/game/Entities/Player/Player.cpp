@@ -69,6 +69,8 @@
 #include "ArenaTeamMgr.h"
 #include "PetitionMgr.h"
 #include "ReputationMgr.h"
+#include "Trainer.h"
+#include "PoolMgr.h"
 
 #ifdef PLAYERBOT
 #include "PlayerbotAI.h"
@@ -1647,7 +1649,7 @@ bool Player::BuildEnumData(PreparedQueryResult result, WorldPacket * p_data, Wor
         if (cInfo)
         {
             petDisplayId = fields2[17].GetUInt32();
-            petLevel = fields2[18].GetUInt8();
+            petLevel = fields2[18].GetUInt16();
             petFamily = cInfo->family;
         }
     }
@@ -2440,17 +2442,8 @@ Creature* Player::GetNPCIfCanInteractWith(ObjectGuid guid, uint32 npcflagmask)
         return nullptr;
 
     // hostile or unfriendly
-    if (creature->GetReactionTo(this) <= REP_UNFRIENDLY)
+    if (creature->GetReactionTo(this) <= REP_UNFRIENDLY) 
         return nullptr;
-
-    // not unfriendly
-    FactionTemplateEntry const* factionTemplate = sFactionTemplateStore.LookupEntry(creature->GetFaction());
-    if(factionTemplate)
-    {
-        FactionEntry const* faction = sFactionStore.LookupEntry(factionTemplate->faction);
-        if( faction->reputationListID >= 0 && GetReputationMgr().GetRank(faction) <= REP_UNFRIENDLY && !HasAuraEffect(29938,0) ) //needed for quest 9410 "A spirit guide"
-            return nullptr;
-    }
 
     // not too far, taken from CGGameUI::SetInteractTarget
     if (!creature->IsWithinDistInMap(this, creature->GetCombatReach() + 4.0f))
@@ -3024,7 +3017,7 @@ void Player::InitStatsForLevel(bool reapplyMods)
     SetFloatValue(PLAYER_RANGED_CRIT_PERCENTAGE,0.0f);
 
     // Init spell schools (will be recalculated in UpdateAllStats() at loading and in _ApplyAllStatBonuses() at reset
-    for (uint8 i = 0; i < 7; ++i)
+    for (int i = SPELL_SCHOOL_NORMAL; i < MAX_SPELL_SCHOOL; i++)
         SetFloatValue(PLAYER_SPELL_CRIT_PERCENTAGE1+i, 0.0f);
 
     SetFloatValue(PLAYER_PARRY_PERCENTAGE, 0.0f);
@@ -3058,7 +3051,7 @@ void Player::InitStatsForLevel(bool reapplyMods)
 
     // save new stats
     for (int i = POWER_MANA; i < MAX_POWERS; i++)
-        SetMaxPower(Powers(i),  uint32(GetCreatePowers(Powers(i))));
+        SetMaxPower(Powers(i),  uint32(GetCreatePowerValue(Powers(i))));
 
     SetMaxHealth(classInfo.basehealth);                     // stamina bonus will applied later
 
@@ -3137,6 +3130,53 @@ void Player::SendInitialSpells()
     //TC_LOG_DEBUG("entities.player", "CHARACTER: Sent Initial Spells" );
 }
 
+void Player::SendUnlearnSpells()
+{
+    WorldPacket data(SMSG_SEND_UNLEARN_SPELLS, 4 + 4 * m_spells.size());
+
+    uint32 spellCount = 0;
+    size_t countPos = data.wpos();
+    data << uint32(spellCount);                             // spell count placeholder
+
+    for (PlayerSpellMap::const_iterator itr = m_spells.begin(); itr != m_spells.end(); ++itr)
+    {
+        if (itr->second->state == PLAYERSPELL_REMOVED)
+            continue;
+
+        if (itr->second->active || itr->second->disabled)
+            continue;
+
+        auto skillLineAbilities = sSpellMgr->GetSkillLineAbilityMapBounds(itr->first);
+        if (skillLineAbilities.first == skillLineAbilities.second)
+            continue;
+
+        bool hasSupercededSpellInfoInClient = false;
+        for (auto boundsItr = skillLineAbilities.first; boundsItr != skillLineAbilities.second; ++boundsItr)
+        {
+            if (boundsItr->second->forward_spellid)
+            {
+                hasSupercededSpellInfoInClient = true;
+                break;
+            }
+        }
+
+        if (hasSupercededSpellInfoInClient)
+            continue;
+
+        uint32 nextRank = sSpellMgr->GetNextSpellInChain(itr->first);
+        if (!nextRank || !HasSpell(nextRank))
+            continue;
+
+        data << uint32(itr->first);
+
+        ++spellCount;
+    }
+
+    data.put<uint32>(countPos, spellCount);                  // write real count value
+
+    SendDirectMessage(&data);
+}
+
 void Player::RemoveMail(uint32 id)
 {
     for(auto itr = m_mail.begin(); itr != m_mail.end();++itr)
@@ -3208,6 +3248,31 @@ void Player::AddNewMailDeliverTime(time_t deliver_time)
     }
 }
 
+static bool IsUnlearnSpellsPacketNeededForSpell(uint32 spellId)
+{
+    SpellInfo const* spellInfo = sSpellMgr->AssertSpellInfo(spellId);
+    if (spellInfo->IsRanked() && !spellInfo->IsStackableWithRanks())
+    {
+        auto skillLineAbilities = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
+        if (skillLineAbilities.first != skillLineAbilities.second)
+        {
+            bool hasSupercededSpellInfoInClient = false;
+            for (auto boundsItr = skillLineAbilities.first; boundsItr != skillLineAbilities.second; ++boundsItr)
+            {
+                if (boundsItr->second->forward_spellid)
+                {
+                    hasSupercededSpellInfoInClient = true;
+                    break;
+                }
+            }
+
+            return !hasSupercededSpellInfoInClient;
+        }
+    }
+
+    return false;
+}
+
 bool Player::AddSpell(uint32 spell_id, bool active, bool learning, bool dependent, bool disabled, bool loading, uint32 fromSkill)
 {
     SpellInfo const *spellInfo = sSpellMgr->GetSpellInfo(spell_id);
@@ -3217,8 +3282,8 @@ bool Player::AddSpell(uint32 spell_id, bool active, bool learning, bool dependen
         if(!IsInWorld() && !learning)                            // spell load case
         {
             TC_LOG_ERROR("entities.player","Player::AddSpell: Non-existed in SpellStore spell #%u request, deleting for all characters in `character_spell`.",spell_id);
-            //DeleteSpellFromAllPlayers(spellId);
-            CharacterDatabase.PExecute("DELETE FROM character_spell WHERE spell = '%u'",spell_id);
+            //TC DeleteSpellFromAllPlayers(spellId);
+            //CharacterDatabase.PExecute("DELETE FROM character_spell WHERE spell = '%u'",spell_id);
         }
         else
             TC_LOG_ERROR("entities.player","Player::AddSpell: Non-existed in SpellStore spell #%u request.",spell_id);
@@ -3231,9 +3296,10 @@ bool Player::AddSpell(uint32 spell_id, bool active, bool learning, bool dependen
         // do character spell book cleanup (all characters)
         if(!IsInWorld() && !learning)                            // spell load case
         {
-            TC_LOG_ERROR("entities.player","Player::AddSpell: Broken spell #%u learning not allowed, deleting for all characters in `character_spell`.",spell_id);
+            //sun: don't alter character database if something went wrong with spell_template loading
+            //TC_LOG_ERROR("entities.player","Player::AddSpell: Broken spell #%u learning not allowed, deleting for all characters in `character_spell`.",spell_id);
             //DeleteSpellFromAllPlayers(spellId);
-            CharacterDatabase.PExecute("DELETE FROM character_spell WHERE spell = '%u'",spell_id);
+            //CharacterDatabase.PExecute("DELETE FROM character_spell WHERE spell = '%u'",spell_id);
         }
         else
             TC_LOG_ERROR("entities.player","Player::AddSpell: Broken spell #%u learning not allowed.",spell_id);
@@ -3306,7 +3372,11 @@ bool Player::AddSpell(uint32 spell_id, bool active, bool learning, bool dependen
             else if (IsInWorld())
             {
                 if (next_active_spell_id)
+                {
                     SendSupercededSpell(spell_id, next_active_spell_id);
+                    if (IsUnlearnSpellsPacketNeededForSpell(spell_id))
+                        SendUnlearnSpells();
+                }
                 else
                 {
                     WorldPacket data(SMSG_REMOVED_SPELL, 4);
@@ -3387,6 +3457,8 @@ bool Player::AddSpell(uint32 spell_id, bool active, bool learning, bool dependen
         newspell->dependent = dependent;
         newspell->disabled = disabled;
 
+        bool needsUnlearnSpellsPacket = false;
+
         // replace spells in action bars and spellbook to bigger rank if only one spell rank must be accessible
         if(newspell->active && !newspell->disabled && !SpellMgr::canStackSpellRanks(spellInfo) && sSpellMgr->GetSpellRank(spellInfo->Id) != 0)
         {
@@ -3403,10 +3475,13 @@ bool Player::AddSpell(uint32 spell_id, bool active, bool learning, bool dependen
                 {
                     if(m_spell.second->active)
                     {
-                        if(sSpellMgr->IsHighRankOfSpell(spell_id,m_spell.first))
+                        if (sSpellMgr->IsHighRankOfSpell(spell_id, m_spell.first))
                         {
                             if (IsInWorld())                 // not send spell (re-/over-)learn packets at loading
+                            {
                                 SendSupercededSpell(m_spell.first, spell_id);
+                                needsUnlearnSpellsPacket = needsUnlearnSpellsPacket || IsUnlearnSpellsPacketNeededForSpell(m_spell.first);
+                            }
 
                             // mark old spell as disable (SMSG_SUPERCEDED_SPELL replace it in client by new)
                             m_spell.second->active = false;
@@ -3414,10 +3489,13 @@ bool Player::AddSpell(uint32 spell_id, bool active, bool learning, bool dependen
                                 m_spell.second->state = PLAYERSPELL_CHANGED;
                             superceded_old = true;          // new spell replace old in action bars and spell book.
                         }
-                        else if(sSpellMgr->IsHighRankOfSpell(m_spell.first,spell_id))
+                        else if (sSpellMgr->IsHighRankOfSpell(m_spell.first, spell_id))
                         {
                             if (IsInWorld())                 // not send spell (re-/over-)learn packets at loading
+                            {
                                 SendSupercededSpell(spell_id, m_spell.first);
+                                needsUnlearnSpellsPacket = needsUnlearnSpellsPacket || IsUnlearnSpellsPacketNeededForSpell(spell_id);
+                            }
 
                             // mark new spell as disable (not learned yet for client and will not learned)
                             newspell->active = false;
@@ -3430,6 +3508,9 @@ bool Player::AddSpell(uint32 spell_id, bool active, bool learning, bool dependen
         }
 
         m_spells[spell_id] = newspell;
+
+        if (needsUnlearnSpellsPacket)
+            SendUnlearnSpells();
 
         // return false if spell disabled
         if (newspell->disabled)
@@ -3460,11 +3541,12 @@ bool Player::AddSpell(uint32 spell_id, bool active, bool learning, bool dependen
     // update used talent points count
     m_usedTalentCount += talentCost;
 
-    // update free primary prof.points (if any, can be none in case GM .learn prof. learning)
-    if(uint32 freeProfs = GetFreePrimaryProffesionPoints())
+    // update free primary prof.points (if not overflow setting, can be in case GM use before .learn prof. learning)
+    if (spellInfo->IsPrimaryProfessionFirstRank())
     {
-        if(sSpellMgr->IsPrimaryProfessionFirstRankSpell(spell_id))
-            SetFreePrimaryProffesions(freeProfs-1);
+        uint32 freeProfs = GetFreePrimaryProfessionPoints() + 1;
+        if (freeProfs <= sWorld->getIntConfig(CONFIG_MAX_PRIMARY_TRADE_SKILL))
+            SetFreePrimaryProfessions(freeProfs);
     }
 
     // add dependent skills
@@ -3484,6 +3566,9 @@ bool Player::AddSpell(uint32 spell_id, bool active, bool learning, bool dependen
 
             if (skill_max_value < new_skill_max_value)
                 skill_max_value = new_skill_max_value;
+
+            if (sWorld->getBoolConfig(CONFIG_ALWAYS_MAXSKILL) && !SpellMgr::IsProfessionOrRidingSkill(spellLearnSkill->skill))
+                skill_value = skill_max_value;
 
             SetSkill(spellLearnSkill->skill, spellLearnSkill->step, skill_value, skill_max_value);
         }
@@ -3591,19 +3676,17 @@ void Player::LearnSpell(uint32 spell_id, bool dependent, uint32 fromSkill /*= 0*
                 LearnSpell(nextSpell, false, fromSkill);
         }
 
-        /* TC
         SpellsRequiringSpellMapBounds spellsRequiringSpell = sSpellMgr->GetSpellsRequiringSpellBounds(spell_id);
         for (SpellsRequiringSpellMap::const_iterator itr2 = spellsRequiringSpell.first; itr2 != spellsRequiringSpell.second; ++itr2)
         {
-        PlayerSpellMap::iterator iter2 = m_spells.find(itr2->second);
-        if (iter2 != m_spells.end() && iter2->second->disabled)
-        LearnSpell(itr2->second, false, fromSkill);
+            PlayerSpellMap::iterator iter2 = m_spells.find(itr2->second);
+            if (iter2 != m_spells.end() && iter2->second->disabled)
+                LearnSpell(itr2->second, false, fromSkill);
         }
-        */
     }
 }
 
-void Player::RemoveSpell(uint32 spell_id, bool disabled)
+void Player::RemoveSpell(uint32 spell_id, bool disabled, bool learn_low_rank)
 {
     auto itr = m_spells.find(spell_id);
     if (itr == m_spells.end())
@@ -3613,22 +3696,26 @@ void Player::RemoveSpell(uint32 spell_id, bool disabled)
         return;
 
     // unlearn non talent higher ranks (recursive)
-    SpellChainNode const* node = sSpellMgr->GetSpellChainNode(spell_id);
-    if (node)
+    if (uint32 nextSpell = sSpellMgr->GetNextSpellInChain(spell_id))
     {
-        if(node->next && HasSpell(node->next->Id) && !GetTalentSpellPos(node->next->Id))
-            RemoveSpell(node->next->Id,disabled);
+        if (HasSpell(nextSpell) && !GetTalentSpellPos(nextSpell))
+            RemoveSpell(nextSpell, disabled, false);
     }
+
     //unlearn spells dependent from recently removed spells
-    SpellsRequiringSpellMap const& reqMap = sSpellMgr->GetSpellsRequiringSpell();
-    auto itr2 = reqMap.find(spell_id);
-    for (uint32 i = reqMap.count(spell_id); i > 0; i--, itr2++)
-        RemoveSpell(itr2->second,disabled);
+    SpellsRequiringSpellMapBounds spellsRequiringSpell = sSpellMgr->GetSpellsRequiringSpellBounds(spell_id);
+    for (SpellsRequiringSpellMap::const_iterator itr2 = spellsRequiringSpell.first; itr2 != spellsRequiringSpell.second; ++itr2)
+        RemoveSpell(itr2->second, disabled);
 
     // re-search, it can be corrupted in prev loop
     itr = m_spells.find(spell_id);
     if (itr == m_spells.end())
         return;
+
+    bool giveTalentPoints = disabled || !itr->second->disabled;
+
+    bool cur_active = itr->second->active;
+    bool cur_dependent = itr->second->dependent;
 
     // removing
     WorldPacket data(SMSG_REMOVED_SPELL, 4);
@@ -3669,11 +3756,12 @@ void Player::RemoveSpell(uint32 spell_id, bool disabled)
     }
 
     // update free primary prof.points (if not overflow setting, can be in case GM use before .learn prof. learning)
-    if(sSpellMgr->IsPrimaryProfessionFirstRankSpell(spell_id))
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spell_id);
+    if (spellInfo && spellInfo->IsPrimaryProfessionFirstRank())
     {
-        uint32 freeProfs = GetFreePrimaryProffesionPoints()+1;
+        uint32 freeProfs = GetFreePrimaryProfessionPoints()+1;
         if(freeProfs <= sWorld->getConfig(CONFIG_MAX_PRIMARY_TRADE_SKILL))
-            SetFreePrimaryProffesions(freeProfs);
+            SetFreePrimaryProfessions(freeProfs);
     }
 
     // remove dependent skill
@@ -3747,6 +3835,65 @@ void Player::RemoveSpell(uint32 spell_id, bool disabled)
 
     for (auto itr3 = spell_bounds.first; itr3 != spell_bounds.second; ++itr3)
         RemoveSpell(itr3->second.spell, disabled);
+    
+    // activate lesser rank in spellbook/action bar, and cast it if need
+    bool prev_activate = false;
+    bool needsUnlearnSpellsPacket = false;
+
+    if (uint32 prev_id = sSpellMgr->GetPrevSpellInChain(spell_id))
+    {
+        // if talent then lesser rank also talent and need learn
+        if (talentCosts)
+        {
+            // I cannot see why mangos has these lines.
+            //if (learn_low_rank)
+            //    learnSpell(prev_id, false);
+        }
+        // if ranked non-stackable spell: need activate lesser rank and update dendence state
+        /// No need to check for spellInfo != nullptr here because if cur_active is true, then that means that the spell was already in m_spells, and only valid spells can be pushed there.
+        else if (cur_active && !spellInfo->IsStackableWithRanks() && spellInfo->IsRanked())
+        {
+            // need manually update dependence state (learn spell ignore like attempts)
+            PlayerSpellMap::iterator prev_itr = m_spells.find(prev_id);
+            if (prev_itr != m_spells.end())
+            {
+                if (prev_itr->second->dependent != cur_dependent)
+                {
+                    prev_itr->second->dependent = cur_dependent;
+                    if (prev_itr->second->state != PLAYERSPELL_NEW)
+                        prev_itr->second->state = PLAYERSPELL_CHANGED;
+                }
+
+                // now re-learn if need re-activate
+                if (!prev_itr->second->active && learn_low_rank)
+                {
+                    if (AddSpell(prev_id, true, false, prev_itr->second->dependent, prev_itr->second->disabled))
+                    {
+                        // downgrade spell ranks in spellbook and action bar
+                        SendSupercededSpell(spell_id, prev_id);
+                        needsUnlearnSpellsPacket = IsUnlearnSpellsPacketNeededForSpell(prev_id);
+                        prev_activate = true;
+                    }
+                }
+            }
+        }
+    }
+
+    if (spell_id == 674 && m_canDualWield)
+        SetCanDualWield(false);
+
+    AutoUnequipOffhandIfNeed();
+
+    if (needsUnlearnSpellsPacket)
+        SendUnlearnSpells();
+
+    // remove from spell book if not replaced by lesser rank
+    if (!prev_activate)
+    {
+        WorldPacket data(SMSG_REMOVED_SPELL, 4);
+        data << uint32(spell_id);
+        SendDirectMessage(&data);
+    }
 }
 
 void Player::RemoveArenaSpellCooldowns(bool removeActivePetCooldowns)
@@ -3993,64 +4140,6 @@ bool Player::HasSpellButDisabled(uint32 spell) const
 {
     auto itr = m_spells.find((uint16)spell);
     return (itr != m_spells.end() && itr->second->state != PLAYERSPELL_REMOVED && itr->second->disabled);
-}
-
-TrainerSpellState Player::GetTrainerSpellState(TrainerSpell const* trainer_spell) const
-{
-    if (!trainer_spell)
-        return TRAINER_SPELL_RED;
-
-    if (!trainer_spell->spell)
-        return TRAINER_SPELL_RED;
-
-    // known spell
-    if(HasSpell(trainer_spell->spell))
-        return TRAINER_SPELL_GRAY;
-
-    // check race/class requirement
-    if(!IsSpellFitByClassAndRace(trainer_spell->spell))
-        return TRAINER_SPELL_RED;
-
-    // check level requirement
-    if(GetLevel() < trainer_spell->reqlevel)
-        return TRAINER_SPELL_RED;
-
-    if(SpellChainNode const* spell_chain = sSpellMgr->GetSpellChainNode(trainer_spell->spell))
-    {
-        // check prev.rank requirement
-        if(spell_chain->prev && !HasSpell(spell_chain->prev->Id))
-            return TRAINER_SPELL_RED;
-    }
-
-    if(uint32 spell_req = sSpellMgr->GetSpellRequired(trainer_spell->spell))
-    {
-        // check additional spell requirement
-        if(!HasSpell(spell_req))
-            return TRAINER_SPELL_RED;
-    }
-
-    // check skill requirement
-    if(trainer_spell->reqskill && GetBaseSkillValue(trainer_spell->reqskill) < trainer_spell->reqskillvalue)
-        return TRAINER_SPELL_RED;
-
-    SpellInfo const* spell = sSpellMgr->GetSpellInfo(trainer_spell->spell);
-    if (!spell)
-    {
-        TC_LOG_ERROR("entities.player", "GetTrainerSpellState could not find spell %u", trainer_spell->spell);
-        return TRAINER_SPELL_RED;
-    }
-
-    // secondary prof. or not prof. spell
-    uint32 skill = spell->Effects[1].MiscValue;
-
-    if(spell->Effects[1].Effect != SPELL_EFFECT_SKILL || !SpellMgr::IsPrimaryProfessionSkill(skill))
-        return TRAINER_SPELL_GREEN;
-
-    // check primary prof. limit
-    if(sSpellMgr->IsPrimaryProfessionFirstRankSpell(spell->Id) && GetFreePrimaryProffesionPoints() == 0)
-        return TRAINER_SPELL_RED;
-
-    return TRAINER_SPELL_GREEN;
 }
 
 void Player::LeaveAllArenaTeams(ObjectGuid guid)
@@ -4987,9 +5076,9 @@ void Player::SetBaseModPctValue(BaseModGroup modGroup, float val)
     UpdateBaseModGroup(modGroup);
 }
 
-void Player::UpdateDamageDoneMods(WeaponAttackType attackType)
+void Player::UpdateDamageDoneMods(WeaponAttackType attackType, int32 skipEnchantSlot /* = -1*/)
 {
-    Unit::UpdateDamageDoneMods(attackType);
+    Unit::UpdateDamageDoneMods(attackType, skipEnchantSlot);
 
     UnitMods unitMod;
     switch (attackType)
@@ -5015,6 +5104,9 @@ void Player::UpdateDamageDoneMods(WeaponAttackType attackType)
 
     for (uint8 slot = 0; slot < MAX_ENCHANTMENT_SLOT; ++slot)
     {
+        if (skipEnchantSlot == slot)
+            continue;
+
         SpellItemEnchantmentEntry const* enchantmentEntry = sSpellItemEnchantmentStore.LookupEntry(item->GetEnchantmentId(EnchantmentSlot(slot)));
         if (!enchantmentEntry)
             continue;
@@ -6079,17 +6171,17 @@ void Player::SaveRecallPosition()
     m_recall_location.WorldRelocate(*this);
 }
 
-void Player::SendMessageToSet(WorldPacket const* data, bool self)
+void Player::SendMessageToSet(WorldPacket const* data, bool self) const
 {
     SendMessageToSetInRange(data, GetVisibilityRange(), self);
 }
 
-void Player::SendMessageToSetInRange(WorldPacket const* data, float dist, bool self, bool includeMargin /*= false*/, Player const* skipped_rcvr /*= nullptr*/)
+void Player::SendMessageToSetInRange(WorldPacket const* data, float dist, bool self, bool includeMargin /*= false*/, Player const* skipped_rcvr /*= nullptr*/) const
 {
     SendMessageToSetInRange(data, dist, self, includeMargin, false, skipped_rcvr);
 }
 
-void Player::SendMessageToSetInRange(WorldPacket const* data, float dist, bool self, bool includeMargin, bool own_team_only, Player const* skipped_rcvr /* = nullptr*/)
+void Player::SendMessageToSetInRange(WorldPacket const* data, float dist, bool self, bool includeMargin, bool own_team_only, Player const* skipped_rcvr /* = nullptr*/) const
 {
     if (self)
         GetSession()->SendPacket(data);
@@ -6102,7 +6194,7 @@ void Player::SendMessageToSetInRange(WorldPacket const* data, float dist, bool s
     Cell::VisitWorldObjects(this, notifier, dist);
 }
 
-void Player::SendMessageToSet(WorldPacket const* data, Player* skipped_rcvr)
+void Player::SendMessageToSet(WorldPacket const* data, Player* skipped_rcvr) const
 {
     if (skipped_rcvr != this)
         GetSession()->SendPacket(data);
@@ -6113,7 +6205,7 @@ void Player::SendMessageToSet(WorldPacket const* data, Player* skipped_rcvr)
     Cell::VisitWorldObjects(this, notifier, GetVisibilityRange());
 }
 
-void Player::SendDirectMessage(WorldPacket *data) const
+void Player::SendDirectMessage(WorldPacket const* data) const
 {
     GetSession()->SendPacket(data);
 }
@@ -12503,14 +12595,35 @@ void Player::ApplyEnchantment(Item *item,EnchantmentSlot slot,bool apply, bool a
     if(!ignore_condition && pEnchant->EnchantmentCondition && !(this->ToPlayer())->EnchantmentFitsRequirements(pEnchant->EnchantmentCondition, -1))
         return;
 
-    for (int s=0; s<3; s++)
-    {
-        uint32 enchant_display_type = pEnchant->type[s];
-        uint32 enchant_amount = pEnchant->amount[s];
-        uint32 enchant_spell_id = pEnchant->spellid[s];
+#ifdef LICH_KING
+    if (pEnchant->requiredLevel > getLevel())
+        return;
 
-        switch(enchant_display_type)
-        {
+    if (pEnchant->requiredSkill > 0 && pEnchant->requiredSkillValue > GetSkillValue(pEnchant->requiredSkill))
+        return;
+
+    // If we're dealing with a gem inside a prismatic socket we need to check the prismatic socket requirements
+    // rather than the gem requirements itself. If the socket has no color it is a prismatic socket.
+    if ((slot == SOCK_ENCHANTMENT_SLOT || slot == SOCK_ENCHANTMENT_SLOT_2 || slot == SOCK_ENCHANTMENT_SLOT_3)
+        && !item->GetTemplate()->Socket[slot - SOCK_ENCHANTMENT_SLOT].Color)
+    {
+        // Check if the requirements for the prismatic socket are met before applying the gem stats
+        SpellItemEnchantmentEntry const* pPrismaticEnchant = sSpellItemEnchantmentStore.LookupEntry(item->GetEnchantmentId(PRISMATIC_ENCHANTMENT_SLOT));
+        if (!pPrismaticEnchant || (pPrismaticEnchant->requiredSkill > 0 && pPrismaticEnchant->requiredSkillValue > GetSkillValue(pPrismaticEnchant->requiredSkill)))
+            return;
+    }
+#endif
+
+    if (!item->IsBroken())
+    {
+        for (uint8 s = 0; s < MAX_ITEM_ENCHANTMENT_EFFECTS; ++s)
+        { 
+            uint32 enchant_display_type = pEnchant->type[s];
+            uint32 enchant_amount = pEnchant->amount[s];
+            uint32 enchant_spell_id = pEnchant->spellid[s];
+
+            switch (enchant_display_type)
+            {
             case ITEM_ENCHANTMENT_TYPE_NONE:
                 break;
             case ITEM_ENCHANTMENT_TYPE_COMBAT_SPELL:
@@ -12520,21 +12633,21 @@ void Player::ApplyEnchantment(Item *item,EnchantmentSlot slot,bool apply, bool a
             {
                 WeaponAttackType const attackType = Player::GetAttackBySlot(item->GetSlot());
                 if (attackType != MAX_ATTACK)
-                    UpdateDamageDoneMods(attackType);
+                    UpdateDamageDoneMods(attackType, apply ? -1 : slot);
             } break;
             case ITEM_ENCHANTMENT_TYPE_EQUIP_SPELL:
-                if(enchant_spell_id)
+                if (enchant_spell_id)
                 {
                     // Hack, Flametongue Weapon
-                    if (enchant_spell_id==10400 || enchant_spell_id==15567 ||
-                        enchant_spell_id==15568 || enchant_spell_id==15569 ||
-                        enchant_spell_id==16311 || enchant_spell_id==16312 ||
-                        enchant_spell_id==16313)
+                    if (enchant_spell_id == 10400 || enchant_spell_id == 15567 ||
+                        enchant_spell_id == 15568 || enchant_spell_id == 15569 ||
+                        enchant_spell_id == 16311 || enchant_spell_id == 16312 ||
+                        enchant_spell_id == 16313)
                     {
                         // processed in Player::CastItemCombatSpell
                         break;
                     }
-                    else if(apply)
+                    else if (apply)
                     {
                         int32 basepoints = 0;
                         // Random Property Exist - try found basepoints for spell (basepoints depends from item suffix factor)
@@ -12544,11 +12657,11 @@ void Player::ApplyEnchantment(Item *item,EnchantmentSlot slot,bool apply, bool a
                             if (item_rand)
                             {
                                 // Search enchant_amount
-                                for (int k=0; k<3; k++)
+                                for (int k = 0; k < 3; k++)
                                 {
-                                    if(item_rand->enchant_id[k] == enchant_id)
+                                    if (item_rand->enchant_id[k] == enchant_id)
                                     {
-                                        basepoints = int32((item_rand->prefix[k]*item->GetItemSuffixFactor()) / 10000 );
+                                        basepoints = int32((item_rand->prefix[k] * item->GetItemSuffixFactor()) / 10000);
                                         break;
                                     }
                                 }
@@ -12573,13 +12686,13 @@ void Player::ApplyEnchantment(Item *item,EnchantmentSlot slot,bool apply, bool a
                 if (!enchant_amount)
                 {
                     ItemRandomSuffixEntry const *item_rand = sItemRandomSuffixStore.LookupEntry(abs(item->GetItemRandomPropertyId()));
-                    if(item_rand)
+                    if (item_rand)
                     {
-                        for (int k=0; k<3; k++)
+                        for (int k = 0; k < 3; k++)
                         {
-                            if(item_rand->enchant_id[k] == enchant_id)
+                            if (item_rand->enchant_id[k] == enchant_id)
                             {
-                                enchant_amount = uint32((item_rand->prefix[k]*item->GetItemSuffixFactor()) / 10000 );
+                                enchant_amount = uint32((item_rand->prefix[k] * item->GetItemSuffixFactor()) / 10000);
                                 break;
                             }
                         }
@@ -12593,13 +12706,13 @@ void Player::ApplyEnchantment(Item *item,EnchantmentSlot slot,bool apply, bool a
                 if (!enchant_amount)
                 {
                     ItemRandomSuffixEntry const *item_rand_suffix = sItemRandomSuffixStore.LookupEntry(abs(item->GetItemRandomPropertyId()));
-                    if(item_rand_suffix)
+                    if (item_rand_suffix)
                     {
-                        for (int k=0; k<3; k++)
+                        for (int k = 0; k < 3; k++)
                         {
-                            if(item_rand_suffix->enchant_id[k] == enchant_id)
+                            if (item_rand_suffix->enchant_id[k] == enchant_id)
                             {
-                                enchant_amount = uint32((item_rand_suffix->prefix[k]*item->GetItemSuffixFactor()) / 10000 );
+                                enchant_amount = uint32((item_rand_suffix->prefix[k] * item->GetItemSuffixFactor()) / 10000);
                                 break;
                             }
                         }
@@ -12608,190 +12721,191 @@ void Player::ApplyEnchantment(Item *item,EnchantmentSlot slot,bool apply, bool a
 
                 switch (enchant_spell_id)
                 {
-                    case ITEM_MOD_AGILITY:
-                        HandleStatFlatModifier(UNIT_MOD_STAT_AGILITY, TOTAL_VALUE, float(enchant_amount), apply);
-                        UpdateStatBuffMod(STAT_AGILITY);
-                        break;
-                    case ITEM_MOD_STRENGTH:
-                        HandleStatFlatModifier(UNIT_MOD_STAT_STRENGTH, TOTAL_VALUE, float(enchant_amount), apply);
-                        UpdateStatBuffMod(STAT_STRENGTH);
-                        break;
-                    case ITEM_MOD_INTELLECT:
-                        HandleStatFlatModifier(UNIT_MOD_STAT_INTELLECT, TOTAL_VALUE, float(enchant_amount), apply);
-                        UpdateStatBuffMod(STAT_INTELLECT);
-                        break;
-                    case ITEM_MOD_SPIRIT:
-                        HandleStatFlatModifier(UNIT_MOD_STAT_SPIRIT, TOTAL_VALUE, float(enchant_amount), apply);
-                        UpdateStatBuffMod(STAT_SPIRIT);
-                        break;
-                    case ITEM_MOD_STAMINA:
-                        HandleStatFlatModifier(UNIT_MOD_STAT_STAMINA, TOTAL_VALUE, float(enchant_amount), apply);
-                        UpdateStatBuffMod(STAT_STAMINA);
-                        break;
-                    case ITEM_MOD_DEFENSE_SKILL_RATING:
-                        (this->ToPlayer())->ApplyRatingMod(CR_DEFENSE_SKILL, enchant_amount, apply);
-                        break;
-                    case  ITEM_MOD_DODGE_RATING:
-                        (this->ToPlayer())->ApplyRatingMod(CR_DODGE, enchant_amount, apply);
-                        break;
-                    case ITEM_MOD_PARRY_RATING:
-                        (this->ToPlayer())->ApplyRatingMod(CR_PARRY, enchant_amount, apply);
-                        break;
-                    case ITEM_MOD_BLOCK_RATING:
-                        (this->ToPlayer())->ApplyRatingMod(CR_BLOCK, enchant_amount, apply);
-                        break;
-                    case ITEM_MOD_HIT_MELEE_RATING:
-                        (this->ToPlayer())->ApplyRatingMod(CR_HIT_MELEE, enchant_amount, apply);
-                        break;
-                    case ITEM_MOD_HIT_RANGED_RATING:
-                        (this->ToPlayer())->ApplyRatingMod(CR_HIT_RANGED, enchant_amount, apply);
-                        break;
-                    case ITEM_MOD_HIT_SPELL_RATING:
-                        (this->ToPlayer())->ApplyRatingMod(CR_HIT_SPELL, enchant_amount, apply);
-                        break;
-                    case ITEM_MOD_CRIT_MELEE_RATING:
-                        (this->ToPlayer())->ApplyRatingMod(CR_CRIT_MELEE, enchant_amount, apply);
-                        break;
-                    case ITEM_MOD_CRIT_RANGED_RATING:
-                        (this->ToPlayer())->ApplyRatingMod(CR_CRIT_RANGED, enchant_amount, apply);
-                        break;
-                    case ITEM_MOD_CRIT_SPELL_RATING:
-                        (this->ToPlayer())->ApplyRatingMod(CR_CRIT_SPELL, enchant_amount, apply);
-                        break;
-//                    Values from ITEM_STAT_MELEE_HA_RATING to ITEM_MOD_HASTE_RANGED_RATING are never used
-//                    in Enchantments
-//                    case ITEM_MOD_HIT_TAKEN_MELEE_RATING:
-//                        (this->ToPlayer())->ApplyRatingMod(CR_HIT_TAKEN_MELEE, enchant_amount, apply);
-//                        break;
-//                    case ITEM_MOD_HIT_TAKEN_RANGED_RATING:
-//                        (this->ToPlayer())->ApplyRatingMod(CR_HIT_TAKEN_RANGED, enchant_amount, apply);
-//                        break;
-//                    case ITEM_MOD_HIT_TAKEN_SPELL_RATING:
-//                        (this->ToPlayer())->ApplyRatingMod(CR_HIT_TAKEN_SPELL, enchant_amount, apply);
-//                        break;
-//                    case ITEM_MOD_CRIT_TAKEN_MELEE_RATING:
-//                        (this->ToPlayer())->ApplyRatingMod(CR_CRIT_TAKEN_MELEE, enchant_amount, apply);
-//                        break;
-//                    case ITEM_MOD_CRIT_TAKEN_RANGED_RATING:
-//                        (this->ToPlayer())->ApplyRatingMod(CR_CRIT_TAKEN_RANGED, enchant_amount, apply);
-//                        break;
-//                    case ITEM_MOD_CRIT_TAKEN_SPELL_RATING:
-//                        (this->ToPlayer())->ApplyRatingMod(CR_CRIT_TAKEN_SPELL, enchant_amount, apply);
-//                        break;
-//                    case ITEM_MOD_HASTE_MELEE_RATING:
-//                        (this->ToPlayer())->ApplyRatingMod(CR_HASTE_MELEE, enchant_amount, apply);
-//                        break;
-//                    case ITEM_MOD_HASTE_RANGED_RATING:
-//                        (this->ToPlayer())->ApplyRatingMod(CR_HASTE_RANGED, enchant_amount, apply);
-//                        break;
-                    case ITEM_MOD_HASTE_SPELL_RATING:
-                        (this->ToPlayer())->ApplyRatingMod(CR_HASTE_SPELL, enchant_amount, apply);
-                        break;
-                    case ITEM_MOD_HIT_RATING:
-                        (this->ToPlayer())->ApplyRatingMod(CR_HIT_MELEE, enchant_amount, apply);
-                        (this->ToPlayer())->ApplyRatingMod(CR_HIT_RANGED, enchant_amount, apply);
-                        (this->ToPlayer())->ApplyRatingMod(CR_HIT_SPELL, enchant_amount, apply);
-                        break;
-                    case ITEM_MOD_CRIT_RATING:
-                        (this->ToPlayer())->ApplyRatingMod(CR_CRIT_MELEE, enchant_amount, apply);
-                        (this->ToPlayer())->ApplyRatingMod(CR_CRIT_RANGED, enchant_amount, apply);
-                        (this->ToPlayer())->ApplyRatingMod(CR_CRIT_SPELL, enchant_amount, apply);
-                        break;
-//                    Values ITEM_MOD_HIT_TAKEN_RATING and ITEM_MOD_CRIT_TAKEN_RATING are never used in Enchantment
-//                    case ITEM_MOD_HIT_TAKEN_RATING:
-//                          (this->ToPlayer())->ApplyRatingMod(CR_HIT_TAKEN_MELEE, enchant_amount, apply);
-//                          (this->ToPlayer())->ApplyRatingMod(CR_HIT_TAKEN_RANGED, enchant_amount, apply);
-//                          (this->ToPlayer())->ApplyRatingMod(CR_HIT_TAKEN_SPELL, enchant_amount, apply);
-//                        break;
-//                    case ITEM_MOD_CRIT_TAKEN_RATING:
-//                          (this->ToPlayer())->ApplyRatingMod(CR_CRIT_TAKEN_MELEE, enchant_amount, apply);
-//                          (this->ToPlayer())->ApplyRatingMod(CR_CRIT_TAKEN_RANGED, enchant_amount, apply);
-//                          (this->ToPlayer())->ApplyRatingMod(CR_CRIT_TAKEN_SPELL, enchant_amount, apply);
-//                        break;
-                    case ITEM_MOD_RESILIENCE_RATING:
-                        (this->ToPlayer())->ApplyRatingMod(CR_CRIT_TAKEN_MELEE, enchant_amount, apply);
-                        (this->ToPlayer())->ApplyRatingMod(CR_CRIT_TAKEN_RANGED, enchant_amount, apply);
-                        (this->ToPlayer())->ApplyRatingMod(CR_CRIT_TAKEN_SPELL, enchant_amount, apply);
-                        break;
-                    case ITEM_MOD_HASTE_RATING:
-                        (this->ToPlayer())->ApplyRatingMod(CR_HASTE_MELEE, enchant_amount, apply);
-                        (this->ToPlayer())->ApplyRatingMod(CR_HASTE_RANGED, enchant_amount, apply);
-                        (this->ToPlayer())->ApplyRatingMod(CR_HASTE_SPELL, enchant_amount, apply);
-                        break;
-                    case ITEM_MOD_EXPERTISE_RATING:
-                        (this->ToPlayer())->ApplyRatingMod(CR_EXPERTISE, enchant_amount, apply);
-                        break;
+                case ITEM_MOD_AGILITY:
+                    HandleStatFlatModifier(UNIT_MOD_STAT_AGILITY, TOTAL_VALUE, float(enchant_amount), apply);
+                    UpdateStatBuffMod(STAT_AGILITY);
+                    break;
+                case ITEM_MOD_STRENGTH:
+                    HandleStatFlatModifier(UNIT_MOD_STAT_STRENGTH, TOTAL_VALUE, float(enchant_amount), apply);
+                    UpdateStatBuffMod(STAT_STRENGTH);
+                    break;
+                case ITEM_MOD_INTELLECT:
+                    HandleStatFlatModifier(UNIT_MOD_STAT_INTELLECT, TOTAL_VALUE, float(enchant_amount), apply);
+                    UpdateStatBuffMod(STAT_INTELLECT);
+                    break;
+                case ITEM_MOD_SPIRIT:
+                    HandleStatFlatModifier(UNIT_MOD_STAT_SPIRIT, TOTAL_VALUE, float(enchant_amount), apply);
+                    UpdateStatBuffMod(STAT_SPIRIT);
+                    break;
+                case ITEM_MOD_STAMINA:
+                    HandleStatFlatModifier(UNIT_MOD_STAT_STAMINA, TOTAL_VALUE, float(enchant_amount), apply);
+                    UpdateStatBuffMod(STAT_STAMINA);
+                    break;
+                case ITEM_MOD_DEFENSE_SKILL_RATING:
+                    (this->ToPlayer())->ApplyRatingMod(CR_DEFENSE_SKILL, enchant_amount, apply);
+                    break;
+                case  ITEM_MOD_DODGE_RATING:
+                    (this->ToPlayer())->ApplyRatingMod(CR_DODGE, enchant_amount, apply);
+                    break;
+                case ITEM_MOD_PARRY_RATING:
+                    (this->ToPlayer())->ApplyRatingMod(CR_PARRY, enchant_amount, apply);
+                    break;
+                case ITEM_MOD_BLOCK_RATING:
+                    (this->ToPlayer())->ApplyRatingMod(CR_BLOCK, enchant_amount, apply);
+                    break;
+                case ITEM_MOD_HIT_MELEE_RATING:
+                    (this->ToPlayer())->ApplyRatingMod(CR_HIT_MELEE, enchant_amount, apply);
+                    break;
+                case ITEM_MOD_HIT_RANGED_RATING:
+                    (this->ToPlayer())->ApplyRatingMod(CR_HIT_RANGED, enchant_amount, apply);
+                    break;
+                case ITEM_MOD_HIT_SPELL_RATING:
+                    (this->ToPlayer())->ApplyRatingMod(CR_HIT_SPELL, enchant_amount, apply);
+                    break;
+                case ITEM_MOD_CRIT_MELEE_RATING:
+                    (this->ToPlayer())->ApplyRatingMod(CR_CRIT_MELEE, enchant_amount, apply);
+                    break;
+                case ITEM_MOD_CRIT_RANGED_RATING:
+                    (this->ToPlayer())->ApplyRatingMod(CR_CRIT_RANGED, enchant_amount, apply);
+                    break;
+                case ITEM_MOD_CRIT_SPELL_RATING:
+                    (this->ToPlayer())->ApplyRatingMod(CR_CRIT_SPELL, enchant_amount, apply);
+                    break;
+                    //                    Values from ITEM_STAT_MELEE_HA_RATING to ITEM_MOD_HASTE_RANGED_RATING are never used
+                    //                    in Enchantments
+                    //                    case ITEM_MOD_HIT_TAKEN_MELEE_RATING:
+                    //                        (this->ToPlayer())->ApplyRatingMod(CR_HIT_TAKEN_MELEE, enchant_amount, apply);
+                    //                        break;
+                    //                    case ITEM_MOD_HIT_TAKEN_RANGED_RATING:
+                    //                        (this->ToPlayer())->ApplyRatingMod(CR_HIT_TAKEN_RANGED, enchant_amount, apply);
+                    //                        break;
+                    //                    case ITEM_MOD_HIT_TAKEN_SPELL_RATING:
+                    //                        (this->ToPlayer())->ApplyRatingMod(CR_HIT_TAKEN_SPELL, enchant_amount, apply);
+                    //                        break;
+                    //                    case ITEM_MOD_CRIT_TAKEN_MELEE_RATING:
+                    //                        (this->ToPlayer())->ApplyRatingMod(CR_CRIT_TAKEN_MELEE, enchant_amount, apply);
+                    //                        break;
+                    //                    case ITEM_MOD_CRIT_TAKEN_RANGED_RATING:
+                    //                        (this->ToPlayer())->ApplyRatingMod(CR_CRIT_TAKEN_RANGED, enchant_amount, apply);
+                    //                        break;
+                    //                    case ITEM_MOD_CRIT_TAKEN_SPELL_RATING:
+                    //                        (this->ToPlayer())->ApplyRatingMod(CR_CRIT_TAKEN_SPELL, enchant_amount, apply);
+                    //                        break;
+                    //                    case ITEM_MOD_HASTE_MELEE_RATING:
+                    //                        (this->ToPlayer())->ApplyRatingMod(CR_HASTE_MELEE, enchant_amount, apply);
+                    //                        break;
+                    //                    case ITEM_MOD_HASTE_RANGED_RATING:
+                    //                        (this->ToPlayer())->ApplyRatingMod(CR_HASTE_RANGED, enchant_amount, apply);
+                    //                        break;
+                case ITEM_MOD_HASTE_SPELL_RATING:
+                    (this->ToPlayer())->ApplyRatingMod(CR_HASTE_SPELL, enchant_amount, apply);
+                    break;
+                case ITEM_MOD_HIT_RATING:
+                    (this->ToPlayer())->ApplyRatingMod(CR_HIT_MELEE, enchant_amount, apply);
+                    (this->ToPlayer())->ApplyRatingMod(CR_HIT_RANGED, enchant_amount, apply);
+                    (this->ToPlayer())->ApplyRatingMod(CR_HIT_SPELL, enchant_amount, apply);
+                    break;
+                case ITEM_MOD_CRIT_RATING:
+                    (this->ToPlayer())->ApplyRatingMod(CR_CRIT_MELEE, enchant_amount, apply);
+                    (this->ToPlayer())->ApplyRatingMod(CR_CRIT_RANGED, enchant_amount, apply);
+                    (this->ToPlayer())->ApplyRatingMod(CR_CRIT_SPELL, enchant_amount, apply);
+                    break;
+                    //                    Values ITEM_MOD_HIT_TAKEN_RATING and ITEM_MOD_CRIT_TAKEN_RATING are never used in Enchantment
+                    //                    case ITEM_MOD_HIT_TAKEN_RATING:
+                    //                          (this->ToPlayer())->ApplyRatingMod(CR_HIT_TAKEN_MELEE, enchant_amount, apply);
+                    //                          (this->ToPlayer())->ApplyRatingMod(CR_HIT_TAKEN_RANGED, enchant_amount, apply);
+                    //                          (this->ToPlayer())->ApplyRatingMod(CR_HIT_TAKEN_SPELL, enchant_amount, apply);
+                    //                        break;
+                    //                    case ITEM_MOD_CRIT_TAKEN_RATING:
+                    //                          (this->ToPlayer())->ApplyRatingMod(CR_CRIT_TAKEN_MELEE, enchant_amount, apply);
+                    //                          (this->ToPlayer())->ApplyRatingMod(CR_CRIT_TAKEN_RANGED, enchant_amount, apply);
+                    //                          (this->ToPlayer())->ApplyRatingMod(CR_CRIT_TAKEN_SPELL, enchant_amount, apply);
+                    //                        break;
+                case ITEM_MOD_RESILIENCE_RATING:
+                    (this->ToPlayer())->ApplyRatingMod(CR_CRIT_TAKEN_MELEE, enchant_amount, apply);
+                    (this->ToPlayer())->ApplyRatingMod(CR_CRIT_TAKEN_RANGED, enchant_amount, apply);
+                    (this->ToPlayer())->ApplyRatingMod(CR_CRIT_TAKEN_SPELL, enchant_amount, apply);
+                    break;
+                case ITEM_MOD_HASTE_RATING:
+                    (this->ToPlayer())->ApplyRatingMod(CR_HASTE_MELEE, enchant_amount, apply);
+                    (this->ToPlayer())->ApplyRatingMod(CR_HASTE_RANGED, enchant_amount, apply);
+                    (this->ToPlayer())->ApplyRatingMod(CR_HASTE_SPELL, enchant_amount, apply);
+                    break;
+                case ITEM_MOD_EXPERTISE_RATING:
+                    (this->ToPlayer())->ApplyRatingMod(CR_EXPERTISE, enchant_amount, apply);
+                    break;
 #ifdef LICH_KING
-                    case ITEM_MOD_ATTACK_POWER:
-                        HandleStatFlatModifier(UNIT_MOD_ATTACK_POWER, TOTAL_VALUE, float(enchant_amount), apply);
-                        HandleStatFlatModifier(UNIT_MOD_ATTACK_POWER_RANGED, TOTAL_VALUE, float(enchant_amount), apply);
-                        TC_LOG_DEBUG("entities.player.items", "+ %u ATTACK_POWER", enchant_amount);
-                        break;
-                    case ITEM_MOD_RANGED_ATTACK_POWER:
-                        HandleStatFlatModifier(UNIT_MOD_ATTACK_POWER_RANGED, TOTAL_VALUE, float(enchant_amount), apply);
-                        TC_LOG_DEBUG("entities.player.items", "+ %u RANGED_ATTACK_POWER", enchant_amount);
-                        break;
-                        //                        case ITEM_MOD_FERAL_ATTACK_POWER:
-                        //                            ApplyFeralAPBonus(enchant_amount, apply);
-                        //                            TC_LOG_DEBUG("entities.player.items", "+ %u FERAL_ATTACK_POWER", enchant_amount);
-                        //                            break;
-                    case ITEM_MOD_MANA_REGENERATION:
-                        ApplyManaRegenBonus(enchant_amount, apply);
-                        TC_LOG_DEBUG("entities.player.items", "+ %u MANA_REGENERATION", enchant_amount);
-                        break;
-                    case ITEM_MOD_ARMOR_PENETRATION_RATING:
-                        ApplyRatingMod(CR_ARMOR_PENETRATION, enchant_amount, apply);
-                        TC_LOG_DEBUG("entities.player.items", "+ %u ARMOR PENETRATION", enchant_amount);
-                        break;
-                    case ITEM_MOD_SPELL_POWER:
-                        ApplySpellPowerBonus(enchant_amount, apply);
-                        TC_LOG_DEBUG("entities.player.items", "+ %u SPELL_POWER", enchant_amount);
-                        break;
-                    case ITEM_MOD_HEALTH_REGEN:
-                        ApplyHealthRegenBonus(enchant_amount, apply);
-                        TC_LOG_DEBUG("entities.player.items", "+ %u HEALTH_REGENERATION", enchant_amount);
-                        break;
-                    case ITEM_MOD_SPELL_PENETRATION:
-                        ApplySpellPenetrationBonus(enchant_amount, apply);
-                        TC_LOG_DEBUG("entities.player.items", "+ %u SPELL_PENETRATION", enchant_amount);
-                        break;
-                    case ITEM_MOD_BLOCK_VALUE:
-                        HandleBaseModFlatValue(SHIELD_BLOCK_VALUE, float(enchant_amount), apply);
-                        TC_LOG_DEBUG("entities.player.items", "+ %u BLOCK_VALUE", enchant_amount);
-                        break;
-                    case ITEM_MOD_SPELL_HEALING_DONE:   // deprecated
-                    case ITEM_MOD_SPELL_DAMAGE_DONE:    // deprecated
+                case ITEM_MOD_ATTACK_POWER:
+                    HandleStatFlatModifier(UNIT_MOD_ATTACK_POWER, TOTAL_VALUE, float(enchant_amount), apply);
+                    HandleStatFlatModifier(UNIT_MOD_ATTACK_POWER_RANGED, TOTAL_VALUE, float(enchant_amount), apply);
+                    TC_LOG_DEBUG("entities.player.items", "+ %u ATTACK_POWER", enchant_amount);
+                    break;
+                case ITEM_MOD_RANGED_ATTACK_POWER:
+                    HandleStatFlatModifier(UNIT_MOD_ATTACK_POWER_RANGED, TOTAL_VALUE, float(enchant_amount), apply);
+                    TC_LOG_DEBUG("entities.player.items", "+ %u RANGED_ATTACK_POWER", enchant_amount);
+                    break;
+                    //                        case ITEM_MOD_FERAL_ATTACK_POWER:
+                    //                            ApplyFeralAPBonus(enchant_amount, apply);
+                    //                            TC_LOG_DEBUG("entities.player.items", "+ %u FERAL_ATTACK_POWER", enchant_amount);
+                    //                            break;
+                case ITEM_MOD_MANA_REGENERATION:
+                    ApplyManaRegenBonus(enchant_amount, apply);
+                    TC_LOG_DEBUG("entities.player.items", "+ %u MANA_REGENERATION", enchant_amount);
+                    break;
+                case ITEM_MOD_ARMOR_PENETRATION_RATING:
+                    ApplyRatingMod(CR_ARMOR_PENETRATION, enchant_amount, apply);
+                    TC_LOG_DEBUG("entities.player.items", "+ %u ARMOR PENETRATION", enchant_amount);
+                    break;
+                case ITEM_MOD_SPELL_POWER:
+                    ApplySpellPowerBonus(enchant_amount, apply);
+                    TC_LOG_DEBUG("entities.player.items", "+ %u SPELL_POWER", enchant_amount);
+                    break;
+                case ITEM_MOD_HEALTH_REGEN:
+                    ApplyHealthRegenBonus(enchant_amount, apply);
+                    TC_LOG_DEBUG("entities.player.items", "+ %u HEALTH_REGENERATION", enchant_amount);
+                    break;
+                case ITEM_MOD_SPELL_PENETRATION:
+                    ApplySpellPenetrationBonus(enchant_amount, apply);
+                    TC_LOG_DEBUG("entities.player.items", "+ %u SPELL_PENETRATION", enchant_amount);
+                    break;
+                case ITEM_MOD_BLOCK_VALUE:
+                    HandleBaseModFlatValue(SHIELD_BLOCK_VALUE, float(enchant_amount), apply);
+                    TC_LOG_DEBUG("entities.player.items", "+ %u BLOCK_VALUE", enchant_amount);
+                    break;
+                case ITEM_MOD_SPELL_HEALING_DONE:   // deprecated
+                case ITEM_MOD_SPELL_DAMAGE_DONE:    // deprecated
 #endif
-                    default:
-                        break;
+                default:
+                    break;
                 }
                 break;
             }
             case ITEM_ENCHANTMENT_TYPE_TOTEM:               // Shaman Rockbiter Weapon
             {
-                if(GetClass() == CLASS_SHAMAN)
+                if (GetClass() == CLASS_SHAMAN)
                 {
-                    switch(item->GetSlot())
+                    switch (item->GetSlot())
                     {
-                        case EQUIPMENT_SLOT_MAINHAND:
-                        case EQUIPMENT_SLOT_OFFHAND:
-                        {
-                            UnitMods mod = item->GetSlot() == EQUIPMENT_SLOT_MAINHAND ? UNIT_MOD_DAMAGE_MAINHAND : UNIT_MOD_DAMAGE_OFFHAND;
-                            float addValue = float(enchant_amount * item->GetTemplate()->Delay / 1000.0f);
-                            HandleStatFlatModifier(mod, TOTAL_VALUE, addValue, apply);
-                            break;
-                        }
-                        default:
-                            break;
+                    case EQUIPMENT_SLOT_MAINHAND:
+                    case EQUIPMENT_SLOT_OFFHAND:
+                    {
+                        UnitMods mod = item->GetSlot() == EQUIPMENT_SLOT_MAINHAND ? UNIT_MOD_DAMAGE_MAINHAND : UNIT_MOD_DAMAGE_OFFHAND;
+                        float addValue = float(enchant_amount * item->GetTemplate()->Delay / 1000.0f);
+                        HandleStatFlatModifier(mod, TOTAL_VALUE, addValue, apply);
+                        break;
+                    }
+                    default:
+                        break;
                     }
                 }
                 break;
             }
             default:
-                TC_LOG_ERROR("entities.player","Unknown item enchantment display type: %d",enchant_display_type);
+                TC_LOG_ERROR("entities.player", "Unknown item enchantment display type: %d", enchant_display_type);
                 break;
-        }                                                   /*switch(enchant_display_type)*/
-    }                                                       /*for*/
+            }                                                   /*switch(enchant_display_type)*/
+        }                                                       /*for*/
+    }
 
     // visualize enchantment at player and equipped items
     if(slot < MAX_INSPECTED_ENCHANTMENT_SLOT)
@@ -12864,24 +12978,26 @@ void Player::SendNewItem(Item *item, uint32 count, bool received, bool created, 
 
 void Player::PrepareQuestMenu(ObjectGuid guid)
 {
-    Object *pObject;
-    QuestRelations* pObjectQR;
-    QuestRelations* pObjectQIR;
-    Creature *pCreature = ObjectAccessor::GetCreature(*this, guid);
-    if( pCreature )
+    QuestRelationBounds objectQR;
+    QuestRelationBounds objectQIR;
+
+    Creature* creature = ObjectAccessor::GetCreatureOrPetOrVehicle(*this, guid);
+    if (creature)
     {
-        pObject = (Object*)pCreature;
-        pObjectQR  = &sObjectMgr->mCreatureQuestRelations;
-        pObjectQIR = &sObjectMgr->mCreatureQuestInvolvedRelations;
+        objectQR = sObjectMgr->GetCreatureQuestRelationBounds(creature->GetEntry());
+        objectQIR = sObjectMgr->GetCreatureQuestInvolvedRelationBounds(creature->GetEntry());
     }
     else
     {
-        GameObject *pGameObject = ObjectAccessor::GetGameObject(*this, guid);
-        if( pGameObject )
+        //we should obtain map pointer from GetMap() in 99% of cases. Special case
+        //only for quests which cast teleport spells on player
+        Map* _map = IsInWorld() ? GetMap() : sMapMgr->FindMap(GetMapId(), GetInstanceId());
+        ASSERT(_map);
+        GameObject* pGameObject = _map->GetGameObject(guid);
+        if (pGameObject)
         {
-            pObject = (Object*)pGameObject;
-            pObjectQR  = &sObjectMgr->mGOQuestRelations;
-            pObjectQIR = &sObjectMgr->mGOQuestInvolvedRelations;
+            objectQR = sObjectMgr->GetGOQuestRelationBounds(pGameObject->GetEntry());
+            objectQIR = sObjectMgr->GetGOQuestInvolvedRelationBounds(pGameObject->GetEntry());
         }
         else
             return;
@@ -12890,44 +13006,46 @@ void Player::PrepareQuestMenu(ObjectGuid guid)
     QuestMenu &qm = PlayerTalkClass->GetQuestMenu();
     qm.ClearMenu();
 
-    for(QuestRelations::const_iterator i = pObjectQIR->lower_bound(pObject->GetEntry()); i != pObjectQIR->upper_bound(pObject->GetEntry()); ++i)
+    for (QuestRelations::const_iterator i = objectQIR.first; i != objectQIR.second; ++i)
     {
         uint32 quest_id = i->second;
-        QuestStatus status = GetQuestStatus( quest_id );
-        if ( status == QUEST_STATUS_COMPLETE && !GetQuestRewardStatus( quest_id ) )
+        QuestStatus status = GetQuestStatus(quest_id);
+#ifdef LICH_KING
+        f(status == QUEST_STATUS_COMPLETE)
+            qm.AddMenuItem(quest_id, 4);
+        else if (status == QUEST_STATUS_INCOMPLETE)
+            qm.AddMenuItem(quest_id, 4);
+#else
+        if (status == QUEST_STATUS_COMPLETE && !GetQuestRewardStatus(quest_id))
             qm.AddMenuItem(quest_id, DIALOG_STATUS_REWARD_REP);
-        else if ( status == QUEST_STATUS_INCOMPLETE)
+        else if (status == QUEST_STATUS_INCOMPLETE)
             qm.AddMenuItem(quest_id, DIALOG_STATUS_INCOMPLETE);
-        //else if (status == QUEST_STATUS_AVAILABLE)
-        //    qm.AddMenuItem(quest_id, DIALOG_STATUS_CHAT);
+#endif   
+       /* unused?
+       else if (status == QUEST_STATUS_AVAILABLE)
+            qm.AddMenuItem(quest_id, DIALOG_STATUS_CHAT);*/
     }
 
-    for(QuestRelations::const_iterator i = pObjectQR->lower_bound(pObject->GetEntry()); i != pObjectQR->upper_bound(pObject->GetEntry()); ++i)
+    for (QuestRelations::const_iterator i = objectQR.first; i != objectQR.second; ++i)
     {
         uint32 quest_id = i->second;
-        Quest const* pQuest = sObjectMgr->GetQuestTemplate(quest_id);
-        if(!pQuest)
+        Quest const* quest = sObjectMgr->GetQuestTemplate(quest_id);
+        if(!quest)
+            continue;
+
+        if (!CanTakeQuest(quest, false))
             continue;
 
         QuestStatus status = GetQuestStatus( quest_id );
 
-        if (pQuest->IsAutoComplete() && CanTakeQuest(pQuest, false))
+        if (quest->IsAutoComplete())
             qm.AddMenuItem(quest_id, DIALOG_STATUS_REWARD_REP);
-        else if ( status == QUEST_STATUS_NONE && CanTakeQuest( pQuest, false ) ) {
-            if (pCreature && pCreature->GetQuestPoolId()) {
-                if (!sWorld->IsQuestInAPool(quest_id)) {
-                    qm.AddMenuItem(quest_id, DIALOG_STATUS_CHAT);
-                    continue;
-                }
-                // Quest is in a pool, check if it's current
-                if (sWorld->GetCurrentQuestForPool(pCreature->GetQuestPoolId()) != quest_id)
-                    continue;
-                else
-                    qm.AddMenuItem(quest_id, DIALOG_STATUS_CHAT);
-            }
-            else    // No quest pool, just add it
-                qm.AddMenuItem(quest_id, DIALOG_STATUS_AVAILABLE);
-        }
+        else if (status == QUEST_STATUS_NONE)
+#ifdef LICH_KING
+            qm.AddMenuItem(quest_id, 2);
+#else
+            qm.AddMenuItem(quest_id, DIALOG_STATUS_AVAILABLE);
+#endif
     }
 }
 
@@ -13022,8 +13140,8 @@ Quest const* Player::GetNextQuest(ObjectGuid guid, Quest const *pQuest)
     if( pCreature )
     {
         pObject = (Object*)pCreature;
-        pObjectQR  = &sObjectMgr->mCreatureQuestRelations;
-        //pObjectQIR = &sObjectMgr->mCreatureQuestInvolvedRelations;
+        pObjectQR  = &sObjectMgr->_creatureQuestRelations;
+        //pObjectQIR = &sObjectMgr->_creatureQuestInvolvedRelations;
     }
     else
     {
@@ -13031,8 +13149,8 @@ Quest const* Player::GetNextQuest(ObjectGuid guid, Quest const *pQuest)
         if( pGameObject )
         {
             pObject = (Object*)pGameObject;
-            pObjectQR  = &sObjectMgr->mGOQuestRelations;
-            //pObjectQIR = &sObjectMgr->mGOQuestInvolvedRelations;
+            pObjectQR  = &sObjectMgr->_goQuestRelations;
+            //pObjectQIR = &sObjectMgr->_goQuestInvolvedRelations;
         }
         else
             return nullptr;
@@ -13572,8 +13690,6 @@ void Player::RewardQuest(Quest const* quest, uint32 reward, Object* questGiver, 
     if (quest->GetQuestCompleteScript() != 0)
         GetMap()->ScriptsStart(sQuestEndScripts, quest->GetQuestCompleteScript(), questGiver, this);
 
-    RewardReputation(quest);
-
     // make full db save
     SaveToDB(false);
 
@@ -13994,7 +14110,7 @@ bool Player::SatisfyQuestDay( Quest const* qInfo, bool msg )
     if(!have_slot)
     {
         if( msg )
-            SendCanTakeQuestResponse( INVALIDREASON_DAILY_QUESTS_REMAINING );
+            SendCanTakeQuestResponse(INVALIDREASON_DAILY_QUESTS_REMAINING);
         return false;
     }
 
@@ -14104,19 +14220,21 @@ QuestStatus Player::GetQuestStatus(uint32 quest_id) const
 bool Player::CanShareQuest(uint32 quest_id) const
 {
     Quest const* qInfo = sObjectMgr->GetQuestTemplate(quest_id);
-    if( qInfo && qInfo->HasFlag(QUEST_FLAGS_SHARABLE) )
+    if (qInfo && qInfo->HasFlag(QUEST_FLAGS_SHARABLE))
     {
-        auto itr = m_QuestStatus.find( quest_id );
-        if( itr != m_QuestStatus.end() )
+        auto itr = m_QuestStatus.find(quest_id);
+        if (itr != m_QuestStatus.end())
         {
             // in pool and not currently available (wintergrasp weekly, dalaran weekly) - can't share
-            /*
             if (sPoolMgr->IsPartOfAPool<Quest>(quest_id) && !sPoolMgr->IsSpawnedObject<Quest>(quest_id))
             {
+#ifdef LICH_KING
                 SendPushToPartyResponse(this, QUEST_PARTY_MSG_CANT_BE_SHARED_TODAY);
+#else
+                ChatHandler(GetSession()).PSendSysMessage("This quest cannot be shared today.");
+#endif
                 return false;
             }
-            TC */
 
             return true;
         }
@@ -14272,16 +14390,16 @@ void Player::AreaExploredOrEventHappens(uint32 questId)
 }
 
 //not used in Trinityd, function for external script library
-void Player::GroupEventHappens( uint32 questId, WorldObject const* pEventObject )
+void Player::GroupEventHappens(uint32 questId, WorldObject const* pEventObject)
 {
-    if( Group *pGroup = GetGroup() )
+    if (Group *pGroup = GetGroup())
     {
         for(GroupReference *itr = pGroup->GetFirstMember(); itr != nullptr; itr = itr->next())
         {
             Player *pGroupGuy = itr->GetSource();
 
             // for any leave or dead (with not released body) group member at appropriate distance
-            if( pGroupGuy && pGroupGuy->IsAtGroupRewardDistance(pEventObject) && !pGroupGuy->GetCorpse() )
+            if (pGroupGuy && pGroupGuy->IsAtGroupRewardDistance(pEventObject) && !pGroupGuy->GetCorpse())
                 pGroupGuy->AreaExploredOrEventHappens(questId);
         }
     }
@@ -14291,10 +14409,10 @@ void Player::GroupEventHappens( uint32 questId, WorldObject const* pEventObject 
 
 void Player::ItemAddedQuestCheck(uint32 entry, uint32 count)
 {
-    for( int i = 0; i < MAX_QUEST_LOG_SIZE; i++ )
+    for (int i = 0; i < MAX_QUEST_LOG_SIZE; i++)
     {
         uint32 questid = GetQuestSlotQuestId(i);
-        if ( questid == 0 )
+        if (questid == 0)
             continue;
 
         QuestStatusData& q_status = m_QuestStatus[questid];
@@ -14309,11 +14427,11 @@ void Player::ItemAddedQuestCheck(uint32 entry, uint32 count)
         for (int j = 0; j < QUEST_ITEM_OBJECTIVES_COUNT; j++)
         {
             uint32 reqitem = qInfo->RequiredItemId[j];
-            if ( reqitem == entry )
+            if (reqitem == entry)
             {
                 uint32 reqitemcount = qInfo->RequiredItemCount[j];
                 uint32 curitemcount = q_status.ItemCount[j];
-                if ( curitemcount < reqitemcount )
+                if (curitemcount < reqitemcount)
                 {
                     uint32 additemcount = (curitemcount + count <= reqitemcount ? count : reqitemcount - curitemcount);
                     q_status.ItemCount[j] += additemcount;
@@ -14485,14 +14603,14 @@ void Player::CastedCreatureOrGO( uint32 entry, ObjectGuid guid, uint32 spell_id 
         isCreature = true;
 
     uint32 addCastCount = 1;
-    for( int i = 0; i < MAX_QUEST_LOG_SIZE; i++ )
+    for (int i = 0; i < MAX_QUEST_LOG_SIZE; i++)
     {
         uint32 questid = GetQuestSlotQuestId(i);
         if(!questid)
             continue;
 
         Quest const* qInfo = sObjectMgr->GetQuestTemplate(questid);
-        if ( !qInfo  )
+        if (!qInfo)
             continue;
 
         QuestStatusData& q_status = m_QuestStatus[questid];
@@ -14525,12 +14643,12 @@ void Player::CastedCreatureOrGO( uint32 entry, ObjectGuid guid, uint32 spell_id 
                     }
 
                     // other not this creature/GO related objectives
-                    if( reqTarget != entry )
+                    if (reqTarget != entry)
                         continue;
 
                     uint32 reqCastCount = qInfo->RequiredNpcOrGoCount[j];
                     uint32 curCastCount = q_status.CreatureOrGOCount[j];
-                    if ( curCastCount < reqCastCount )
+                    if (curCastCount < reqCastCount)
                     {
                         q_status.CreatureOrGOCount[j] = curCastCount + addCastCount;
                         m_QuestStatusSave[questid] = QUEST_DEFAULT_SAVE_TYPE;
@@ -14538,8 +14656,8 @@ void Player::CastedCreatureOrGO( uint32 entry, ObjectGuid guid, uint32 spell_id 
                         SendQuestUpdateAddCreatureOrGo( qInfo, guid, j, curCastCount, addCastCount);
                     }
 
-                    if ( CanCompleteQuest( questid ) )
-                        CompleteQuest( questid );
+                    if (CanCompleteQuest(questid))
+                        CompleteQuest(questid);
 
                     // same objective target can be in many active quests, but not in 2 objectives for single quest (code optimization).
                     break;
@@ -16097,6 +16215,10 @@ Item* Player::_LoadItem(SQLTransaction& trans, uint32 zoneId, uint32 timeDiff, F
     {
         TC_LOG_ERROR("entities.player", "Player::_LoadInventory: player (GUID: %u, name: '%s') has an unknown item (entry: %u) in inventory. Deleting item.",
             GetGUID().GetCounter(), GetName().c_str(), itemEntry);
+
+        // Insert unknown deleted item into table
+        trans->PAppend("INSERT INTO character_deleted_items (player_guid, item_entry, stack_count) VALUES ('%u', '%u', '%u')", GetGUID(), itemEntry, fields[4].GetUInt32());
+        
         Item::DeleteFromInventoryDB(trans, itemGuid);
         Item::DeleteFromDB(trans, itemGuid);
     }
@@ -20095,7 +20217,7 @@ void Player::UpdateVisibilityForPlayer()
 
 void Player::InitPrimaryProffesions()
 {
-    SetFreePrimaryProffesions(sWorld->getConfig(CONFIG_MAX_PRIMARY_TRADE_SKILL));
+    SetFreePrimaryProfessions(sWorld->getConfig(CONFIG_MAX_PRIMARY_TRADE_SKILL));
 }
 
 bool Player::IsQuestRewarded(uint32 quest_id) const
@@ -20229,10 +20351,7 @@ void Player::SendInitialPacketsBeforeAddToMap()
 #endif
 
     SendInitialSpells();
-
-    data.Initialize(SMSG_SEND_UNLEARN_SPELLS, 4);
-    data << uint32(0);                                      // count, for(count) uint32;
-    SendDirectMessage(&data);
+    SendUnlearnSpells();
 
     SendInitialActionButtons();
     m_reputationMgr->SendInitialReputations();
@@ -20730,18 +20849,14 @@ void Player::LearnAllClassProficiencies()
         if (GetClass() == CLASS_SHAMAN && itr == 674)
             continue;
 
-        //a bit hacky: lets transform our spells into trainer spell to be able to use GetTrainerSpellState
-        TrainerSpell trainerSpell;
-        trainerSpell.reqlevel = 0;
-        trainerSpell.reqskill = 0;
-        trainerSpell.reqskillvalue = 0;
-        trainerSpell.spell = itr;
-        trainerSpell.spellcost = 0;
+        //hacky: lets transform our spells into trainer spell to be able to use GetTrainerSpellState
+        Trainer::TrainerSpell trainerSpell;
+        trainerSpell.SpellId = itr;
 
-        if (GetTrainerSpellState(&trainerSpell) != TRAINER_SPELL_GREEN)
+        if (Trainer::Trainer::GetSpellState(this, &trainerSpell) != Trainer::SpellState::Available)
             continue;
 
-        LearnSpell(trainerSpell.spell, false);
+        LearnSpell(itr, false);
     }
 }
 
@@ -20796,26 +20911,26 @@ void Player::LearnAllClassSpells()
             //pet spells
             uint32 spellsId [119] = {5149,883,1515,6991,2641,982,17254,737,17262,24424,26184,3530,26185,35303,311,26184,17263,7370,35299,35302,17264,1749,231,2441,23111,2976,23111,17266,2981,17262,24609,2976,26094,2982,298,1747,17264,24608,26189,24454,23150,24581,2977,1267,1748,26065,24455,1751,17265,23146,17267,23112,17265,2310,23100,24451,175,24607,2315,2981,24641,25013,25014,17263,3667,24584,3667,2975,23146,25015,1749,26185,1750,35388,17266,24607,25016,23149,24588,23149,295,27361,26202,35306,2619,2977,16698,3666,3666,24582,23112,26202,1751,16698,24582,17268,24599,24589,25017,35391,3489,28343,35307,27347,27349,353,24599,35324,27347,35348,27348,17268,27348,27346,24845,27361,2751,24632,35308 };
             for (uint32 i : spellsId)
-                AddSpell(i,true);
+                LearnSpell(i,true);
             break;
         }
         case CLASS_PALADIN:
             //Pala mounts
             if (GetTeam() == ALLIANCE) {
-                AddSpell(23214, true); //60
-                AddSpell(13819, true); //40
+                LearnSpell(23214, true); //60
+                LearnSpell(13819, true); //40
             } else {
-                AddSpell(34767, true); //60
-                AddSpell(34769, true); //40
+                LearnSpell(34767, true); //60
+                LearnSpell(34769, true); //40
             }
             break;
         case CLASS_WARLOCK:
-            AddSpell(5784, true); //mount 40
-            AddSpell(23161, true); //mount 60
-            AddSpell(688, true); //imp
-            AddSpell(697, true); //void walker
-            AddSpell(712, true); //Succubus
-            AddSpell(691, true); //Fel Hunter
+            LearnSpell(5784, true); //mount 40
+            LearnSpell(23161, true); //mount 60
+            LearnSpell(688, true); //imp
+            LearnSpell(697, true); //void walker
+            LearnSpell(712, true); //Succubus
+            LearnSpell(691, true); //Fel Hunter
             break;
         default:
             break;
@@ -20900,8 +21015,8 @@ void Player::LearnAllClassSpells()
         }
     }
 
-    TrainerSpellData const* trainer_spells = sObjectMgr->GetNpcTrainerSpells(classMaster);
-    if(!trainer_spells)
+    Trainer::Trainer const* trainer = sObjectMgr->GetTrainer(classMaster);
+    if(!trainer)
     {
         TC_LOG_ERROR("entities.player","Player::LearnAllClassSpell - No trainer spells for entry %u.",playerClass);
         return;
@@ -20910,12 +21025,12 @@ void Player::LearnAllClassSpells()
     //the spells in trainer list aren't in the right order, so some spells won't be learned. The i loop is a ugly hack to fix this.
     for(int i = 0; i < 15; i++)
     {
-        for(auto itr : trainer_spells->spellList)
+        for(auto itr : trainer->GetSpells())
         {
-            if(GetTrainerSpellState(itr) != TRAINER_SPELL_GREEN)
+            if (Trainer::Trainer::GetSpellState(this, &itr) != Trainer::SpellState::Available)
                 continue;
 
-            LearnSpell(itr->spell, false);
+            LearnSpell(itr.SpellId, false);
         }
     }
 }
@@ -23286,16 +23401,16 @@ void Player::PrepareGossipMenu(WorldObject* source, uint32 menuId /*= 0*/, bool 
                 }
 #ifdef LICH_KING
                 case GOSSIP_OPTION_LEARNDUALSPEC:
-                    if (!(GetSpecsCount() == 1 && creature->isCanTrainingAndResetTalentsOf(this) && !(GetLevel() < sWorld->getIntConfig(CONFIG_MIN_DUALSPEC_LEVEL))))
+                    if (!(GetSpecsCount() == 1 && creature->CanResetTalents(this) && !(GetLevel() < sWorld->getIntConfig(CONFIG_MIN_DUALSPEC_LEVEL))))
                         canTalk = false;
                     break;
 #endif
                 case GOSSIP_OPTION_UNLEARNTALENTS:
-                    if (!creature->canResetTalentsOf(this))
+                    if (!creature->CanResetTalents(this))
                         canTalk = false;
                     break;
                 case GOSSIP_OPTION_UNLEARNPETTALENTS:
-                    if (!GetPet() || GetPet()->getPetType() != HUNTER_PET || GetPet()->m_spells.size() <= 1 || creature->GetCreatureTemplate()->trainer_type != TRAINER_TYPE_PETS || creature->GetCreatureTemplate()->trainer_class != CLASS_HUNTER)
+                    if (!GetPet() || GetPet()->getPetType() != HUNTER_PET || GetPet()->m_spells.size() <= 1 || !creature->CanResetTalents(this))
                         canTalk = false;
                     break;
                 case GOSSIP_OPTION_TAXIVENDOR:
@@ -23314,11 +23429,16 @@ void Player::PrepareGossipMenu(WorldObject* source, uint32 menuId /*= 0*/, bool 
                     canTalk = false;
                     break;
                 case GOSSIP_OPTION_TRAINER:
-                    if (GetClass() != creature->GetCreatureTemplate()->trainer_class && creature->GetCreatureTemplate()->trainer_type == TRAINER_TYPE_CLASS)
-                        TC_LOG_ERROR("sql.sql", "GOSSIP_OPTION_TRAINER:: Player %s (GUID: %u) request wrong gossip menu: %u with wrong class: %u at Creature: %s (Entry: %u, Trainer Class: %u)",
-                            GetName().c_str(), GetGUID().GetCounter(), menu->GetGossipMenu().GetMenuId(), GetClass(), creature->GetName().c_str(), creature->GetEntry(), creature->GetCreatureTemplate()->trainer_class);
-
+                {
+                    Trainer::Trainer const* trainer = sObjectMgr->GetTrainer(creature->GetEntry());
+                    if (!trainer || !trainer->IsTrainerValidForPlayer(this))
+                    {
+                        TC_LOG_ERROR("sql.sql", "GOSSIP_OPTION_TRAINER:: Player %s (GUID: %u) requested wrong gossip menu: %u at Creature: %s (Entry: %u)",
+                            GetName().c_str(), GetGUID().GetCounter(), menu->GetGossipMenu().GetMenuId(), creature->GetName().c_str(), creature->GetEntry());
+                        canTalk = false;
+                    }
                     [[fallthrough]];
+                }
                 case GOSSIP_OPTION_GOSSIP:
                 case GOSSIP_OPTION_SPIRITGUIDE:
                 case GOSSIP_OPTION_INNKEEPER:
@@ -23425,7 +23545,7 @@ void Player::SendPreparedGossip(WorldObject* source)
     if (uint32 menuId = PlayerTalkClass->GetGossipMenu().GetMenuId())
         textId = GetGossipTextId(menuId, source);
 
-    PlayerTalkClass->SendGossipMenuTextID(textId, source->GetGUID());
+    PlayerTalkClass->SendGossipMenu(textId, source->GetGUID());
 }
 
 void Player::OnGossipSelect(WorldObject* source, uint32 gossipListId, uint32 menuId)
@@ -23498,9 +23618,10 @@ void Player::OnGossipSelect(WorldObject* source, uint32 gossipListId, uint32 men
             GetSession()->SendStablePet(guid);
             break;
         case GOSSIP_OPTION_TRAINER:
-            GetSession()->SendTrainerList(guid);
+            GetSession()->SendTrainerList(source->ToCreature());
             break;
-       /* case GOSSIP_OPTION_LEARNDUALSPEC:
+#ifdef LICH_KING
+        case GOSSIP_OPTION_LEARNDUALSPEC:
             if (GetSpecsCount() == 1 && getLevel() >= sWorld->getIntConfig(CONFIG_MIN_DUALSPEC_LEVEL))
             {
                 // Cast spells that teach dual spec
@@ -23508,18 +23629,22 @@ void Player::OnGossipSelect(WorldObject* source, uint32 gossipListId, uint32 men
                 CastSpell(this, 63680, TRIGGERED_FULL_MASK, NULL, NULL, GetGUID());
                 CastSpell(this, 63624, TRIGGERED_FULL_MASK, NULL, NULL, GetGUID());
 
-                // Should show another Gossip text with "Congratulations..."
-                PlayerTalkClass->SendCloseGossip();
+                PrepareGossipMenu(source, menuItemData->GossipActionMenuId);
+                SendPreparedGossip(source);
             }
             break;
-           */
+#endif
         case GOSSIP_OPTION_UNLEARNTALENTS:
             PlayerTalkClass->SendCloseGossip();
             SendTalentWipeConfirm(guid);
             break;
         case GOSSIP_OPTION_UNLEARNPETTALENTS:
-            PlayerTalkClass->SendCloseGossip();
+#ifdef LICH_KING
+            ResetPetTalents();
+#else
             SendPetSkillWipeConfirm();
+#endif
+            PlayerTalkClass->SendCloseGossip();
             break;
         case GOSSIP_OPTION_TAXIVENDOR:
             GetSession()->SendTaxiMenu(source->ToCreature());
@@ -23595,11 +23720,7 @@ uint32 Player::GetDefaultGossipMenuForSource(WorldObject* source)
     switch (source->GetTypeId())
     {
     case TYPEID_UNIT:
-        // return menu for this particular guid if any
-        if (uint32 menuId = sObjectMgr->GetNpcGossipMenu(source->ToCreature()->GetSpawnId()))
-            return menuId;
-
-        // else return menu from creature template
+        // return menu from creature template
         return source->ToCreature()->GetCreatureTemplate()->GossipMenuId;
     case TYPEID_GAMEOBJECT:
         return source->ToGameObject()->GetGOInfo()->GetGossipMenuId();

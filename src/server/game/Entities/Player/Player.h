@@ -120,13 +120,6 @@ struct SpellCooldown
     uint16 itemid;
 };
 
-enum TrainerSpellState
-{
-    TRAINER_SPELL_GREEN = 0,
-    TRAINER_SPELL_RED   = 1,
-    TRAINER_SPELL_GRAY  = 2
-};
-
 enum ActionButtonUpdateState
 {
     ACTIONBUTTON_UNCHANGED = 0,
@@ -1051,7 +1044,9 @@ enum PlayerCommandStates
     CHEAT_CASTTIME  = 0x02,
     CHEAT_COOLDOWN  = 0x04,
     CHEAT_POWER     = 0x08,
-    CHEAT_WATERWALK = 0x10
+    CHEAT_WATERWALK = 0x10,
+    CHEAT_CRIT      = 0x20,
+    CHEAT_HIT       = 0x40,
 };
 
 struct SpamReport
@@ -1303,7 +1298,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         bool IsValidPos(uint16 pos) { return IsBankPos(pos >> 8, pos & 255); }
         bool IsValidPos(uint8 bag, uint8 slot) const;
         bool HasBankBagSlot(uint8 slot) const;
-        bool HasItemCount(uint32 item, uint32 count, bool inBankAlso = false) const;
+        bool HasItemCount(uint32 item, uint32 count = 1, bool inBankAlso = false) const;
         uint32 GetEmptyBagSlotsCount() const;
         bool HasItemFitToSpellRequirements(SpellInfo const* spellInfo, Item const* ignoreItem = nullptr) const;
         bool CanNoReagentCast(SpellInfo const* spellInfo) const;
@@ -1526,7 +1521,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         void GroupEventHappens(uint32 questId, WorldObject const* pEventObject);
         void ItemAddedQuestCheck(uint32 entry, uint32 count);
         void ItemRemovedQuestCheck(uint32 entry, uint32 count);
-        void KilledMonsterCredit(uint32 entry, ObjectGuid guid, uint32 questId = 0);
+        void KilledMonsterCredit(uint32 entry, ObjectGuid guid = ObjectGuid::Empty, uint32 questId = 0);
         void ActivatedGO(uint32 entry, ObjectGuid guid);
         void CastedCreatureOrGO(uint32 entry, ObjectGuid guid, uint32 spell_id);
         void TalkedToCreature(uint32 entry, ObjectGuid guid);
@@ -1697,15 +1692,15 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         void SendRemoveControlBar() const;
         bool HasSpell(uint32 spell) const override;
         bool HasSpellButDisabled(uint32 spell) const;
-        TrainerSpellState GetTrainerSpellState(TrainerSpell const* trainer_spell) const;
         bool IsSpellFitByClassAndRace( uint32 spell_id ) const;
         bool HandlePassiveSpellLearn(SpellInfo const* spellInfo);
 
         void SendProficiency(uint8 pr1, uint32 pr2);
         void SendInitialSpells();
+        void SendUnlearnSpells();
         bool AddSpell(uint32 spell_id, bool active, bool learning = true, bool dependent = false, bool disabled = false, bool loading = false, uint32 fromSkill = 0 );
         void LearnSpell(uint32 spell_id, bool dependent, uint32 fromSkill = 0);
-        void RemoveSpell(uint32 spell_id, bool disabled = false);
+        void RemoveSpell(uint32 spell_id, bool disabled = false, bool learn_low_rank = true);
         void resetSpells();
         void LearnDefaultSkills();
         void LearnDefaultSkill(uint32 skillId, uint16 rank);
@@ -1728,8 +1723,8 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
 #endif
         void LearnTalent(uint32 talentId, uint32 talentRank);
 
-        uint32 GetFreePrimaryProffesionPoints() const { return GetUInt32Value(PLAYER_CHARACTER_POINTS2); }
-        void SetFreePrimaryProffesions(uint16 profs) { SetUInt32Value(PLAYER_CHARACTER_POINTS2,profs); }
+        uint32 GetFreePrimaryProfessionPoints() const { return GetUInt32Value(PLAYER_CHARACTER_POINTS2); }
+        void SetFreePrimaryProfessions(uint16 profs) { SetUInt32Value(PLAYER_CHARACTER_POINTS2, profs); }
         void InitPrimaryProffesions();
 
         PlayerSpellMap const& GetSpellMap() const { return m_spells; }
@@ -1948,10 +1943,10 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         void ProcessTerrainStatusUpdate(ZLiquidStatus status, Optional<LiquidData> const& liquidData, bool updateCreatureLiquid ) override;
         void AtExitCombat() override;
 
-        void SendMessageToSet(WorldPacket const* data, bool self) override;
-        void SendMessageToSetInRange(WorldPacket const* data, float dist, bool self, bool includeMargin = false, Player const* skipped_rcvr = nullptr) override;
-		void SendMessageToSetInRange(WorldPacket const* data, float dist, bool self, bool includeMargin, bool own_team_only, Player const* skipped_rcvr = nullptr);
-        void SendMessageToSet(WorldPacket const* data, Player* skipped_rcvr) override;
+        void SendMessageToSet(WorldPacket const* data, bool self) const override;
+        void SendMessageToSetInRange(WorldPacket const* data, float dist, bool self, bool includeMargin = false, Player const* skipped_rcvr = nullptr) const override;
+		void SendMessageToSetInRange(WorldPacket const* data, float dist, bool self, bool includeMargin, bool own_team_only, Player const* skipped_rcvr = nullptr) const;
+        void SendMessageToSet(WorldPacket const* data, Player* skipped_rcvr) const override;
 
         /**
         * Deletes a character from the database
@@ -2091,7 +2086,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         void SetBaseModFlatValue(BaseModGroup modGroup, float val);
         void SetBaseModPctValue(BaseModGroup modGroup, float val);
 
-        void UpdateDamageDoneMods(WeaponAttackType attackType) override;
+        void UpdateDamageDoneMods(WeaponAttackType attackType, int32 skipEnchantSlot = -1) override;
         void UpdateBaseModGroup(BaseModGroup modGroup);
 
         float GetBaseModValue(BaseModGroup modGroup, BaseModType modType) const;
@@ -2121,7 +2116,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
 
         void SendInitWorldStates(uint32 zoneid, uint32 areaid);
         void SendUpdateWorldState(uint32 Field, uint32 Value);
-        void SendDirectMessage(WorldPacket *data) const;
+        void SendDirectMessage(WorldPacket const* data) const;
 
         void SendAuraDurationsForTarget(Unit* target);
 

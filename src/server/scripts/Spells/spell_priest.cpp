@@ -41,9 +41,7 @@ public:
 
         bool Validate(SpellInfo const* /*spellInfo*/) override
         {
-            if (!sSpellMgr->GetSpellInfo(SPELL_MANA_LEECH))
-                return false;
-            return true;
+            return ValidateSpellInfo({ SPELL_MANA_LEECH });
         }
 
         void HandleAfterCast()
@@ -132,6 +130,10 @@ public:
         {
             Unit* target = GetTarget();
             if (dmgInfo.GetAttacker() == target)
+                return;
+
+            // Don't try to reflect the reflect spell
+            if (dmgInfo.GetSpellInfo() && dmgInfo.GetSpellInfo()->Id == SPELL_PRIEST_REFLECTIVE_SHIELD_TRIGGERED)
                 return;
 
             if (AuraEffect* talentAurEff = target->GetAuraEffectOfRankedSpell(SPELL_PRIEST_REFLECTIVE_SHIELD_R1, EFFECT_0))

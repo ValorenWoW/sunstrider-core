@@ -230,18 +230,24 @@ void Guild::BankEventLogEntry::WritePacket(WorldPacket& data) const
         case GUILD_BANK_LOG_DEPOSIT_ITEM:
         case GUILD_BANK_LOG_WITHDRAW_ITEM:
             data << uint32(m_itemOrMoney);
+#ifdef LICH_KING
             data << uint32(m_itemStackCount);
+#else
+            data << uint8(m_itemStackCount);
+#endif
             break;
         case GUILD_BANK_LOG_MOVE_ITEM:
         case GUILD_BANK_LOG_MOVE_ITEM2:
             data << uint32(m_itemOrMoney);
+#ifdef LICH_KING
             data << uint32(m_itemStackCount);
+#else
+            data << uint8(m_itemStackCount);
+#endif
             data << uint8(m_destTabId);
             break;
         default:
             data << uint32(m_itemOrMoney);
-            //older code has also stack here for GUILD_BANK_LOG_WITHDRAW_MONEY, GUILD_BANK_LOG_REPAIR_MONEY, GUILD_BANK_LOG_MOVE_ITEM2, GUILD_BANK_LOG_UNK1 and GUILD_BANK_LOG_BUY_SLOT
-            //I'm assuming this was wrong but keeping this comment here
     }
 
     data << uint32(WorldGameTime::GetGameTime() - m_timestamp);

@@ -554,7 +554,7 @@ SpellSpecificType SpellInfo::GetSpellSpecific() const
             if( SpellFamilyFlags & 0x4000A000200LL )
                 return SPELL_SPECIFIC_SEAL;
 
-            if (SpellFamilyFlags & 0x10000100LL)
+            if (SpellFamilyFlags & 0x10000180LL)
                 return SPELL_SPECIFIC_BLESSING;
 
             if ((SpellFamilyFlags & 0x00000820180400LL) && (HasAttribute(SPELL_ATTR3_TRIGGERED_CAN_TRIGGER_PROC_2)))
@@ -902,121 +902,204 @@ void SpellInfo::_LoadSpellDiminishInfo()
         {
         case SPELLFAMILY_GENERIC:
         {
-            switch (Id) {
+            switch (Id) 
+            {
             case 30529: // Recently In Game - Karazhan Chess Event
             case 44799: // Frost Breath (Kalecgos)
             case 46562: // Mind Flay
-            case 6945: // Chest Pains
+            case 6945:  // Chest Pains
                 return DIMINISHING_NONE;
             case 12494: // Frostbite
-                return DIMINISHING_TRIGGER_ROOT;
+                return DIMINISHING_ROOT;
             }
         }
         case SPELLFAMILY_MAGE:
         {
-            // Polymorph
-            if ((SpellFamilyFlags & 0x00001000000LL) && Effects[0].ApplyAuraName == SPELL_AURA_MOD_CONFUSE)
-                return DIMINISHING_POLYMORPH;
-            if (Id == 33395) // Elemental's freeze
+            // Frost Nova / Freeze (Water Elemental)
+            if (SpellIconID == 193)
                 return DIMINISHING_CONTROLLED_ROOT;
+#ifdef LICH_KING
+            // Frostbite
+            else if (SpellFamilyFlags[1] & 0x80000000)
+                return DIMINISHING_ROOT;
+            // Shattered Barrier
+            else if (SpellVisual[0] == 12297)
+                return DIMINISHING_ROOT;
+            // Deep Freeze
+            else if (SpellIconID == 2939 && SpellVisual[0] == 9963)
+                return DIMINISHING_CONTROLLED_STUN;
+            // Dragon's Breath
+            else if (SpellFamilyFlags[0] & 0x800000)
+                return DIMINISHING_DRAGONS_BREATH;
+#endif
             break;
         }
-        case SPELLFAMILY_ROGUE:
-        {
-            // Kidney Shot
-            if (SpellFamilyFlags & 0x00000200000LL)
-                return DIMINISHING_KIDNEYSHOT;
-            // Sap
-            else if (SpellFamilyFlags & 0x00000000080LL)
-                return DIMINISHING_POLYMORPH;
-            // Gouge
-            else if (SpellFamilyFlags & 0x00000000008LL)
-                return DIMINISHING_POLYMORPH;
-            // Blind
-            else if (SpellFamilyFlags & 0x00001000000LL)
-                return DIMINISHING_BLIND_CYCLONE;
-            break;
-        }
-        case SPELLFAMILY_HUNTER:
-        {
-            // Freezing trap
-            if (SpellFamilyFlags & 0x00000000008LL)
-                return DIMINISHING_FREEZE;
-            break;
-        }
-        case SPELLFAMILY_WARLOCK:
-        {
-            // Death Coil
-            if (SpellFamilyFlags & 0x00000080000LL)
-                return DIMINISHING_DEATHCOIL;
-            // Seduction
-            if (SpellFamilyFlags & 0x00040000000LL)
-                return DIMINISHING_FEAR;
-            // Fear
-            //else if (SpellFamilyFlags & 0x40840000000LL)
-            //    return DIMINISHING_WARLOCK_FEAR;
-            // Curses/etc
-            if (SpellVisual == 339 && SpellIconID == 692) // Curse of Languages
-                return DIMINISHING_LIMITONLY;
-            else if (SpellFamilyFlags & 0x20000000000) // Curse of the Elements
-                return DIMINISHING_LIMITONLY;
-            else if (SpellFamilyFlags & 0x00080000000LL) 
-            {
-                if (SpellVisual == 1265 && SpellIconID == 93)   // Curse of Recklessness
-                    return DIMINISHING_NONE;
-                else
-                    return DIMINISHING_LIMITONLY;
-            }
-            break;
-        }
-        case SPELLFAMILY_DRUID:
-        {
-            // Cyclone
-            if (SpellFamilyFlags & 0x02000000000LL)
-                return DIMINISHING_BLIND_CYCLONE;
-            // Nature's Grasp trigger
-            if (SpellFamilyFlags & 0x00000000200LL && Attributes == 0x49010000)
-                return DIMINISHING_CONTROLLED_ROOT;
-            break;
-        }
+
         case SPELLFAMILY_WARRIOR:
         {
             // Hamstring - limit duration to 10s in PvP
             if (SpellFamilyFlags & 0x00000000002LL)
                 return DIMINISHING_LIMITONLY;
+#ifdef LICH_KING
+            // Charge Stun (own diminishing)
+            else if (SpellFamilyFlags[0] & 0x01000000)
+                return DIMINISHING_CHARGE;
+#endif
             break;
         }
+        case SPELLFAMILY_WARLOCK:
+        {
+            // Seduction
+            if (SpellFamilyFlags & 0x00040000000LL)
+                return DIMINISHING_FEAR;
+            // Curses/etc
+            if (
+#ifdef LICH_KING
+                (SpellFamilyFlags & 0x80000000) || //Curse of Recklessness
+#endif
+                (SpellFamilyFlags & 0x20000000000))
+                return DIMINISHING_LIMITONLY;
+            break;
+        }
+        case SPELLFAMILY_DRUID:
+        {
+            if (SpellFamilyFlags & 0x02000000000LL)
+#ifdef LICH_KING
+                return DIMINISHING_CYCLONE;
+#else
+                return DIMINISHING_BLIND_CYCLONE;
+#endif
+
+#ifdef LICH_KING
+            // Pounce
+            else if (SpellFamilyFlags[0] & 0x20000)
+                return DIMINISHING_OPENING_STUN;
+            // Faerie Fire
+            else if (SpellFamilyFlags[0] & 0x400)
+                return DIMINISHING_LIMITONLY;
+#endif
+            // Entangling Roots
+            // Nature's Grasp trigger
+            else if (SpellFamilyFlags & 0x00000000200LL)
+                return DIMINISHING_CONTROLLED_ROOT;
+            break;
+        }
+        case SPELLFAMILY_ROGUE:
+        {
+            // Cheap Shot
+            if (SpellFamilyFlags & 0x400)
+#ifdef LICH_KING
+                return DIMINISHING_OPENING_STUN;
+#else
+                return DIMINISHING_CONTROLLED_STUN;
+
+            // Kidney Shot
+            else if (SpellFamilyFlags & 0x00000200000LL)
+                return DIMINISHING_KIDNEY_SHOT;
+#endif
+            // Gouge
+            else if (SpellFamilyFlags & 0x00000000008LL)
+                return DIMINISHING_DISORIENT;
+            // Blind
+            else if (SpellFamilyFlags & 0x00001000000LL)
+#ifdef LICH_KING
+                return DIMINISHING_FEAR;
+#else
+                return DIMINISHING_BLIND_CYCLONE;
+#endif
+
+#ifdef LICH_KING
+
+            // Crippling poison - Limit to 10 seconds in PvP (No SpellFamilyFlags)
+            else if (SpellIconID == 163)
+                return DIMINISHING_LIMITONLY;
+#endif
+            break;
+        }
+        case SPELLFAMILY_HUNTER:
+        {
+#ifdef LICH_KING
+            // Hunter's Mark
+            if ((SpellFamilyFlags[0] & 0x400) && SpellIconID == 538)
+                return DIMINISHING_LIMITONLY;
+            // Scatter Shot (own diminishing)
+            else if ((SpellFamilyFlags[0] & 0x40000) && SpellIconID == 132)
+                return DIMINISHING_SCATTER_SHOT;
+            // Entrapment (own diminishing)
+            else if (SpellVisual[0] == 7484 && SpellIconID == 20)
+                return DIMINISHING_ENTRAPMENT;
+            // Wyvern Sting mechanic is MECHANIC_SLEEP but the diminishing is DIMINISHING_DISORIENT
+            else if ((SpellFamilyFlags[1] & 0x1000) && SpellIconID == 1721)
+                return DIMINISHING_DISORIENT;
+            // Freezing Arrow
+            else if (SpellFamilyFlags[0] & 0x8)
+                return DIMINISHING_DISORIENT;
+#endif
+            break;
+        }
+#ifdef LICH_KING
+        case SPELLFAMILY_PALADIN:
+        {
+            // Judgement of Justice - limit duration to 10s in PvP
+            if (SpellFamilyFlags[0] & 0x100000)
+                return DIMINISHING_LIMITONLY;
+            // Turn Evil
+            else if ((SpellFamilyFlags[1] & 0x804000) && SpellIconID == 309)
+                return DIMINISHING_FEAR;
+            break;
+        }
+        case SPELLFAMILY_SHAMAN:
+        {
+            // Storm, Earth and Fire - Earthgrab
+            if (SpellFamilyFlags[2] & 0x4000)
+                return DIMINISHING_NONE;
+            break;
+        }
+        case SPELLFAMILY_DEATHKNIGHT:
+        {
+            // Hungering Cold (no flags)
+            if (SpellIconID == 2797)
+                return DIMINISHING_DISORIENT;
+            // Mark of Blood
+            else if ((SpellFamilyFlags[0] & 0x10000000) && SpellIconID == 2285)
+                return DIMINISHING_LIMITONLY;
+            break;
+        }
+#endif
         default:
         {
             break;
         }
         }
 
-        // Get by mechanic
-        for (const auto & Effect : Effects)
-        {
-            if (Mechanic == MECHANIC_STUN || Effect.Mechanic == MECHANIC_STUN)
-                return triggered ? DIMINISHING_TRIGGER_STUN : DIMINISHING_CONTROLLED_STUN;
-            else if (Mechanic == MECHANIC_SLEEP || Effect.Mechanic == MECHANIC_SLEEP)
-                return DIMINISHING_SLEEP;
-            else if (Mechanic == MECHANIC_ROOT || Effect.Mechanic == MECHANIC_ROOT)
-                return triggered ? DIMINISHING_TRIGGER_ROOT : DIMINISHING_CONTROLLED_ROOT;
-            else if (Mechanic == MECHANIC_FEAR || Effect.Mechanic == MECHANIC_FEAR)
-                return DIMINISHING_FEAR;
-            else if (Mechanic == MECHANIC_CHARM || Effect.Mechanic == MECHANIC_CHARM)
-                return DIMINISHING_CHARM;
-            /*   else if (Mechanic == MECHANIC_SILENCE || Effects[i].Mechanic == MECHANIC_SILENCE)
-            return DIMINISHING_SILENCE; */
-            else if (Mechanic == MECHANIC_DISARM || Effect.Mechanic == MECHANIC_DISARM)
-                return DIMINISHING_DISARM;
-            else if (Mechanic == MECHANIC_FREEZE || Effect.Mechanic == MECHANIC_FREEZE)
-                return DIMINISHING_FREEZE;
-            else if (Mechanic == MECHANIC_KNOCKOUT || Effect.Mechanic == MECHANIC_KNOCKOUT ||
-                Mechanic == MECHANIC_SAPPED || Effect.Mechanic == MECHANIC_SAPPED)
-                return DIMINISHING_KNOCKOUT;
-            else if (Mechanic == MECHANIC_BANISH || Effect.Mechanic == MECHANIC_BANISH)
-                return DIMINISHING_BANISH;
-        }
+        // Lastly - Set diminishing depending on mechanic
+        uint32 const mechanic = GetAllEffectsMechanicMask();
+        if (mechanic & (1 << MECHANIC_CHARM))
+            return DIMINISHING_MIND_CONTROL;
+#ifdef LICH_KING
+        if (mechanic & (1 << MECHANIC_SILENCE))
+            return DIMINISHING_SILENCE;
+#endif
+        if (mechanic & (1 << MECHANIC_SLEEP))
+            return DIMINISHING_SLEEP;
+        if (mechanic & ((1 << MECHANIC_SAPPED) | (1 << MECHANIC_POLYMORPH) | (1 << MECHANIC_SHACKLE)))
+            return DIMINISHING_DISORIENT;
+        // Mechanic Knockout, except Blast Wave
+        if (mechanic & (1 << MECHANIC_KNOCKOUT) && SpellIconID != 292)
+            return DIMINISHING_DISORIENT;
+        if (mechanic & (1 << MECHANIC_DISARM))
+            return DIMINISHING_DISARM;
+        if (mechanic & (1 << MECHANIC_FEAR))
+            return DIMINISHING_FEAR;
+        if (mechanic & (1 << MECHANIC_STUN))
+            return triggered ? DIMINISHING_STUN : DIMINISHING_CONTROLLED_STUN;
+        if (mechanic & (1 << MECHANIC_BANISH))
+            return DIMINISHING_BANISH;
+        if (mechanic & (1 << MECHANIC_ROOT))
+            return triggered ? DIMINISHING_ROOT : DIMINISHING_CONTROLLED_ROOT;
+        if (mechanic & (1 << MECHANIC_HORROR))
+            return DIMINISHING_HORROR;
+
 
         return DIMINISHING_NONE;
     };
@@ -1025,28 +1108,23 @@ void SpellInfo::_LoadSpellDiminishInfo()
     {
         switch (group)
         {
+#ifdef LICH_KING
+        case DIMINISHING_TAUNT:
+        case DIMINISHING_CYCLONE:
+        case DIMINISHING_OPENING_STUN:
+#else
         case DIMINISHING_BLIND_CYCLONE:
+        case DIMINISHING_KIDNEY_SHOT:
+#endif
         case DIMINISHING_CONTROLLED_STUN:
-        case DIMINISHING_TRIGGER_STUN:
-        case DIMINISHING_KIDNEYSHOT:
+        case DIMINISHING_STUN:
             return DRTYPE_ALL;
-        case DIMINISHING_SLEEP:
-        case DIMINISHING_CONTROLLED_ROOT:
-        case DIMINISHING_TRIGGER_ROOT:
-        case DIMINISHING_FEAR:
-        case DIMINISHING_CHARM:
-        case DIMINISHING_POLYMORPH:
-        case DIMINISHING_SILENCE:
-        case DIMINISHING_DISARM:
-        case DIMINISHING_DEATHCOIL:
-        case DIMINISHING_FREEZE:
-        case DIMINISHING_BANISH:
-        case DIMINISHING_WARLOCK_FEAR:
-        case DIMINISHING_KNOCKOUT:
+        case DIMINISHING_LIMITONLY:
+        case DIMINISHING_NONE:
+            return DRTYPE_NONE;
+        default:
             return DRTYPE_PLAYER;
         }
-
-        return DRTYPE_NONE;
     };
 
 #ifdef LICH_KING
@@ -1068,22 +1146,25 @@ void SpellInfo::_LoadSpellDiminishInfo()
         {
             switch (group)
             {
-            //groups are different on LK... not done here
-            case DIMINISHING_CONTROLLED_STUN:
-            case DIMINISHING_TRIGGER_STUN:
-            case DIMINISHING_KIDNEYSHOT:
-            case DIMINISHING_SLEEP:
-            case DIMINISHING_CONTROLLED_ROOT:
-            case DIMINISHING_TRIGGER_ROOT:
-            case DIMINISHING_FEAR:
-            case DIMINISHING_WARLOCK_FEAR:
-            case DIMINISHING_CHARM:
-            case DIMINISHING_POLYMORPH:
-            case DIMINISHING_FREEZE:
-            case DIMINISHING_KNOCKOUT:
-            case DIMINISHING_BLIND_CYCLONE:
+
             case DIMINISHING_BANISH:
+            case DIMINISHING_CONTROLLED_STUN:
+            case DIMINISHING_CONTROLLED_ROOT:
+            case DIMINISHING_DISORIENT:
+            case DIMINISHING_FEAR:
+            case DIMINISHING_HORROR:
+            case DIMINISHING_MIND_CONTROL:
+            case DIMINISHING_ROOT:
+            case DIMINISHING_STUN:
+            case DIMINISHING_SLEEP:
             case DIMINISHING_LIMITONLY:
+#ifdef LICH_KING
+            case DIMINISHING_OPENING_STUN:
+            case DIMINISHING_ENTRAPMENT:
+            case DIMINISHING_CYCLONE:
+#else
+            case DIMINISHING_BLIND_CYCLONE:
+#endif
                 return true;
             default:
                 return false;
@@ -1531,22 +1612,27 @@ uint32 SpellInfo::GetCategory() const
     return Category ? Category->Id : 0;
 }
 
+bool SpellInfo::HasEffect(SpellEffects effect) const
+{
+    return HasEffectByEffectMask(effect, SPELL_EFFECT_MASK_ALL);
+}
+
+bool SpellInfo::HasEffect(SpellEffects effect, uint8 effectIndex) const
+{
+    return Effects[effectIndex].IsEffect(effect);
+}
+
 bool SpellInfo::HasEffectByEffectMask(SpellEffects effect, SpellEffectMask effectMask) const
 {
     assert(effectMask <= SPELL_EFFECT_MASK_ALL);
 
     for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
     {
-        if( (effectMask & (1 << i)) && Effects[i].IsEffect(effect))
+        if ((effectMask & (1 << i)) && Effects[i].IsEffect(effect))
             return true;
     }
 
     return false;
-}
-
-bool SpellInfo::HasEffect(SpellEffects effect, uint8 effectIndex) const
-{
-    return HasEffectByEffectMask(effect, SpellEffectMask(1 << effectIndex));
 }
 
 bool SpellInfo::HasAura(AuraType aura) const
@@ -2000,26 +2086,40 @@ bool SpellInfo::IsStackableOnOneSlotWithDifferentCasters() const
     return StackAmount > 1 && !IsChanneled() && !HasAttribute(SPELL_ATTR3_STACK_FOR_DIFF_CASTERS);
 }
 
-bool SpellInfo::IsPositive() const
+bool SpellInfo::IsPositive(bool hostileTarget /* = false*/) const
 {
-    return !HasAttribute(SPELL_ATTR0_CU_NEGATIVE);
+    bool positive = !HasAttribute(SPELL_ATTR0_CU_NEGATIVE);
+    //sun: dispel case: make it negative on hostile targets
+    if (positive && hostileTarget)
+        if (HasEffect(SPELL_EFFECT_DISPEL) || HasEffect(SPELL_EFFECT_DISPEL_MECHANIC))
+            positive = false;
+
+    return positive;
 }
 
 bool SpellInfo::IsPositiveEffect(uint8 effIndex, bool hostileTarget /* = false */) const
 {
-    if(HasEffect(SPELL_EFFECT_DISPEL, effIndex) || HasEffect(SPELL_EFFECT_DISPEL_MECHANIC, effIndex))
-        return !hostileTarget;  // positive on friendly, negative on hostile
-
+    bool positive;
     switch (effIndex)
     {
-        default:
-        case 0:
-            return !HasAttribute(SPELL_ATTR0_CU_NEGATIVE_EFF0);
-        case 1:
-            return !HasAttribute(SPELL_ATTR0_CU_NEGATIVE_EFF1);
-        case 2:
-            return !HasAttribute(SPELL_ATTR0_CU_NEGATIVE_EFF2);
+    default:
+    case 0:
+        positive = !HasAttribute(SPELL_ATTR0_CU_NEGATIVE_EFF0);
+        break;
+    case 1:
+        positive = !HasAttribute(SPELL_ATTR0_CU_NEGATIVE_EFF1);
+        break;
+    case 2:
+        positive = !HasAttribute(SPELL_ATTR0_CU_NEGATIVE_EFF2);
+        break;
     }
+
+    //sun: dispel case: make it negative on hostile targets
+    if (hostileTarget && positive)
+        if (HasEffect(SPELL_EFFECT_DISPEL, effIndex) || HasEffect(SPELL_EFFECT_DISPEL_MECHANIC, effIndex))
+            return false;
+
+    return positive;
 }
 
 uint32 SpellInfo::GetDispelMask() const
@@ -2153,11 +2253,46 @@ bool SpellInfo::IsProfessionOrRiding() const
         {
             uint32 skill = Effect.MiscValue;
 
-            if (sSpellMgr->IsProfessionOrRidingSkill(skill))
+            if (SpellMgr::IsProfessionOrRidingSkill(skill))
                 return true;
         }
     }
     return false;
+}
+
+bool SpellInfo::IsProfession() const
+{
+    for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+    {
+        if (Effects[i].Effect == SPELL_EFFECT_SKILL)
+        {
+            uint32 skill = Effects[i].MiscValue;
+
+            if (SpellMgr::IsProfessionSkill(skill))
+                return true;
+        }
+    }
+    return false;
+}
+
+bool SpellInfo::IsPrimaryProfession() const
+{
+    for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+    {
+        if (Effects[i].Effect == SPELL_EFFECT_SKILL)
+        {
+            uint32 skill = Effects[i].MiscValue;
+
+            if (SpellMgr::IsPrimaryProfessionSkill(skill))
+                return true;
+        }
+    }
+    return false;
+}
+
+bool SpellInfo::IsPrimaryProfessionFirstRank() const
+{
+    return IsPrimaryProfession() && GetRank() == 1;
 }
 
 bool SpellInfo::IsAbilityLearnedWithProfession() const
@@ -2187,7 +2322,7 @@ int32 SpellEffectInfo::CalcValue(WorldObject const* caster/*= nullptr*/, int32 c
     if (caster)
         casterUnit = caster->ToUnit();
 
-    if (casterUnit  && basePointsPerLevel)
+    if (casterUnit && basePointsPerLevel)
     {
         //Cap caster level with MaxLevel (upper) and BaseLevel (lower), then get the difference between that level and the spell level
         int32 level = int32(casterUnit->GetLevel());
@@ -2329,13 +2464,10 @@ float SpellEffectInfo::CalcRadius(WorldObject* caster /*= nullptr*/, Spell* spel
     {
 #ifdef LICH_KING
         if (Unit* casterUnit = caster->ToUnit())
-            radius += RadiusEntry->RadiusPerLevel * caster->getLevel();
+            radius += RadiusEntry->RadiusPerLevel * caster->GetLevel();
+#endif
 
         radius = std::min(radius, RadiusEntry->RadiusMax);
-#else
-        if (Unit* casterUnit = caster->ToUnit())
-            radius = std::min(radius, RadiusEntry->RadiusMax);
-#endif
             
         if (Player* modOwner = caster->GetSpellModOwner())
             modOwner->ApplySpellMod(_spellInfo->Id, SPELLMOD_RADIUS, radius, spell);
@@ -2722,8 +2854,7 @@ bool _isPositiveEffectImpl(SpellInfo const* spellInfo, uint8 effIndex, std::unor
     if (spellInfo->IsPassive())
         return true;
 
-    if (spellInfo->HasAttribute(SPELL_ATTR1_CANT_BE_REFLECTED) //all those should be negative
-        || spellInfo->HasAttribute(SPELL_ATTR0_NEGATIVE_1))
+    if (spellInfo->HasAttribute(SPELL_ATTR0_AURA_IS_DEBUFF))
         return false;
 
     visited.insert({ spellInfo->Id, effIndex });
@@ -2753,6 +2884,7 @@ bool _isPositiveEffectImpl(SpellInfo const* spellInfo, uint8 effIndex, std::unor
         case 1462:                                          // Beast Lore
         case 30877:                                         // Tag Murloc
         case 38044:                                         // Surge
+        case 36554:                                         // Shadowstep
             return true;
         case 1852:                                          // Silenced (GM)
         case 46392:                                         // Focused Assault
@@ -2803,9 +2935,18 @@ bool _isPositiveEffectImpl(SpellInfo const* spellInfo, uint8 effIndex, std::unor
         case 38637:                         // Nether Exhaustion (red)
         case 38638:                         // Nether Exhaustion (green)
         case 38639:                         // Nether Exhaustion (blue)
-        case 31589: // Mage Slow
+        case 8253:  //flametongue totem proc
+        case 8248:  //''
+        case 10523: //''
+        case 16389: //''
+        case 25555: //''
             return false;
     }
+
+    if (spellInfo->HasAttribute(SPELL_ATTR1_CANT_BE_REFLECTED) //all those should be negative
+        && !spellInfo->HasAura(SPELL_AURA_PERIODIC_TRIGGER_SPELL) //sun: exclude trigger spells from this check, needed for spells such as 10
+        && !spellInfo->HasAura(SPELL_AURA_PERIODIC_TRIGGER_SPELL_WITH_VALUE))
+        return false;
 
     switch (spellInfo->SpellFamilyName)
     {
@@ -3001,6 +3142,7 @@ bool _isPositiveEffectImpl(SpellInfo const* spellInfo, uint8 effIndex, std::unor
         case SPELL_AURA_MOD_STAT:
         case SPELL_AURA_MOD_SKILL:
         case SPELL_AURA_MOD_DODGE_PERCENT:
+        case SPELL_AURA_MOD_HEALING: //sun: added
         case SPELL_AURA_MOD_HEALING_PCT:
         case SPELL_AURA_MOD_HEALING_DONE:
         case SPELL_AURA_MOD_DAMAGE_DONE_CREATURE:
@@ -3026,12 +3168,16 @@ bool _isPositiveEffectImpl(SpellInfo const* spellInfo, uint8 effIndex, std::unor
             break;
         case SPELL_AURA_MOD_ATTACKSPEED:            // some buffs have negative bp, check both target and bp
         case SPELL_AURA_MOD_MELEE_HASTE:
+        case SPELL_AURA_HASTE_RANGED:
         case SPELL_AURA_MOD_RESISTANCE_PCT:
         case SPELL_AURA_MOD_RATING:
         case SPELL_AURA_MOD_ATTACK_POWER:
         case SPELL_AURA_MOD_RANGED_ATTACK_POWER:
         case SPELL_AURA_MOD_DAMAGE_PERCENT_DONE:
-            if (!_isPositiveTarget(spellInfo, effIndex) && bp < 0)
+#ifdef LICH_KING
+        case SPELL_AURA_MOD_SPEED_SLOW_ALL:
+#endif
+            if (!_isPositiveTarget(spellInfo, effIndex) || bp < 0)
                 return false;
             break;
         case SPELL_AURA_MOD_DAMAGE_TAKEN:           // dependent from basepoint sign (positive -> negative)

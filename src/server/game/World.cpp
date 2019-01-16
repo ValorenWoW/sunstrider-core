@@ -1374,6 +1374,8 @@ void World::LoadConfigSettings(bool reload)
     m_configs[CONFIG_DB_PING_INTERVAL] = sConfigMgr->GetIntDefault("MaxPingTime", 5);
 
     m_configs[CONFIG_CACHE_DATA_QUERIES] = sConfigMgr->GetBoolDefault("CacheDataQueries", true);
+
+    m_configs[CONFIG_RESTORE_DELETED_ITEMS] = sConfigMgr->GetBoolDefault("Progression.RestoreDeletedItems", true);
 }
 
 /// Get Server Patch
@@ -1643,9 +1645,6 @@ void World::SetInitialWorldSettings()
     TC_LOG_INFO("server.loading", "Loading Transport templates...");
     sTransportMgr->LoadTransportTemplates();
 
-    TC_LOG_INFO("server.loading", "Loading Objects Pooling Data...");
-    sPoolMgr->LoadFromDB();
-
     TC_LOG_INFO("server.loading", "Loading Weather Data..." );
     sObjectMgr->LoadWeatherZoneChances();
 
@@ -1666,6 +1665,9 @@ void World::SetInitialWorldSettings()
 
     TC_LOG_INFO("server.loading", "Loading Quests Greetings...");
     sObjectMgr->LoadQuestGreetings();                           // must be loaded after creature_template, gameobject_template tables
+
+    TC_LOG_INFO("server.loading", "Loading Objects Pooling Data..."); //must be after quests
+    sPoolMgr->LoadFromDB(); 
 
     TC_LOG_INFO("server.loading", "Loading Game Event Data..."); //must be after quests
     sGameEventMgr->LoadFromDB();
@@ -1768,20 +1770,20 @@ void World::SetInitialWorldSettings()
     TC_LOG_INFO("server.loading", "Loading GameTeleports..." );
     sObjectMgr->LoadGameTele();
 
+    TC_LOG_INFO("server.loading", "Loading Trainers...");       // must be after LoadCreatureTemplates
+    sObjectMgr->LoadTrainers();
+
+    TC_LOG_INFO("server.loading", "Loading Creature default trainers...");
+    sObjectMgr->LoadCreatureDefaultTrainers();
+
     TC_LOG_INFO("server.loading", "Loading Npc gossip menus..." );
     sObjectMgr->LoadGossipMenu();
 
-    TC_LOG_INFO("server.loading", "Loading Npc Options..." );
-    sObjectMgr->LoadGossipMenuItems();
-
-    TC_LOG_INFO("server.loading", "Loading Npc gossips Id..." );
-    sObjectMgr->LoadCreatureGossip();                                 // must be after load Creature and menus
+    TC_LOG_INFO("server.loading", "Loading Npc Options..." ); 
+    sObjectMgr->LoadGossipMenuItems();                       // must be after LoadTrainers
 
     TC_LOG_INFO("server.loading", "Loading vendors..." );
     sObjectMgr->LoadVendors();                                   // must be after load CreatureTemplate and ItemTemplate
-
-    TC_LOG_INFO("server.loading", "Loading trainers..." );
-    sObjectMgr->LoadTrainerSpell();                              // must be after load CreatureTemplate
 
     TC_LOG_INFO("server.loading", "Loading Waypoints..." );
     sWaypointMgr->Load();
@@ -1791,6 +1793,9 @@ void World::SetInitialWorldSettings()
 
     TC_LOG_INFO("server.loading", "Loading Creature Formations..." );
     sFormationMgr->LoadCreatureFormations();
+
+    TC_LOG_INFO("server.loading", "Loading World States...");              // must be loaded before battleground, outdoor PvP and conditions
+    LoadWorldStates();
 
     TC_LOG_INFO("server.loading","Loading Conditions...");
     sConditionMgr->LoadConditions();
@@ -1942,9 +1947,6 @@ void World::SetInitialWorldSettings()
     TC_LOG_INFO("server.loading", "Initializing Opcodes...");
     opcodeTable.Initialize();
 
-    TC_LOG_INFO("server.loading","Initialize Quest Pools...");
-    LoadQuestPoolsData();
-
     TC_LOG_INFO("server.loading","Loading automatic announces...");
     LoadAutoAnnounce();
 
@@ -1957,6 +1959,12 @@ void World::SetInitialWorldSettings()
     #ifdef PLAYERBOT
     sPlayerbotAIConfig.Initialize();
     #endif
+
+    if (sWorld->getBoolConfig(CONFIG_RESTORE_DELETED_ITEMS))
+    {
+        TC_LOG_INFO("server.loading", "Restoring deleted items to players ...");
+        sObjectMgr->RestoreDeletedItems();
+    }
 
     TC_LOG_INFO("server.loading", "");
     TC_LOG_INFO("server.loading", "==========================================================");
@@ -2014,51 +2022,6 @@ void World::DetectDBCLang()
     TC_LOG_INFO("server.loading", "Using %s DBC Locale as default. All available DBC locales: %s",localeNames[m_defaultDbcLocale],availableLocalsStr.empty() ? "<none>" : availableLocalsStr.c_str());
 }
 
-uint32 World::GetCurrentQuestForPool(uint32 poolId)
-{
-    std::map<uint32, uint32>::const_iterator itr = m_currentQuestInPools.find(poolId);
-    if (itr != m_currentQuestInPools.end())
-        return itr->second;
-
-    return 0;
-}
-
-bool World::IsQuestInAPool(uint32 questId)
-{
-    return std::any_of(m_questInPools.begin(), m_questInPools.end(), [&](uint32 const itr) { return itr == questId; });
-}
-
-bool World::IsQuestCurrentOfAPool(uint32 questId)
-{
-    return std::any_of(m_currentQuestInPools.begin(), m_currentQuestInPools.end(), [&](auto const& itr) { return itr.second == questId; });
-}
-
-void World::LoadQuestPoolsData()
-{
-    m_questInPools.clear();
-    m_currentQuestInPools.clear();
-    QueryResult result = WorldDatabase.PQuery("SELECT quest_id FROM quest_pool");
-    if (!result)
-        return;
-
-    do {
-        Field* fields = result->Fetch();
-        uint32 questId = fields[0].GetUInt32();
-        m_questInPools.push_back(questId);
-    } while (result->NextRow());
-
-    result = WorldDatabase.PQuery("SELECT pool_id, quest_id FROM quest_pool_current");
-    if (!result)
-        return;
-
-    do {
-        Field* fields = result->Fetch();
-        uint32 poolId = fields[0].GetUInt32();
-        uint32 questId = fields[1].GetUInt32();
-        m_currentQuestInPools[poolId] = questId;
-    } while (result->NextRow());
-}
-
 /// Update the World !
 void World::Update(time_t diff)
 {
@@ -2096,7 +2059,6 @@ void World::Update(time_t diff)
     if(currentGameTime > m_NextDailyQuestReset)
     {
         ResetDailyQuests();
-        InitNewDataForQuestPools();
         InitDailyQuestResetTime(false);
     }
 
@@ -2977,42 +2939,7 @@ void World::ResetDailyQuests()
             m_session.second->GetPlayer()->ResetDailyQuestStatus();
 
     // change available dailies
-    //TC sPoolMgr->ChangeDailyQuests();
-}
-
-void World::InitNewDataForQuestPools()
-{
-    TC_LOG_DEBUG("misc","Init new current quest in pools.");
-    QueryResult result = WorldDatabase.PQuery("SELECT pool_id FROM quest_pool_current");
-    if (!result) {
-        TC_LOG_ERROR("misc","World::InitNewDataForQuestPools: No quest_pool found!");
-        return;
-    }
-
-    do {
-        Field* fields = result->Fetch();
-        uint32 poolId = fields[0].GetUInt32();
-
-        QueryResult resquests = WorldDatabase.PQuery("SELECT quest_id FROM quest_pool WHERE pool_id = %u", poolId);
-        if (!resquests) {
-            TC_LOG_ERROR("misc","World::InitNewDataForQuestPools: No quest in pool (%u)!", poolId);
-            continue;
-        }
-
-        std::vector<uint32> questIds;
-        do {
-            Field* fieldquests = resquests->Fetch();
-            uint32 questId = fieldquests[0].GetUInt32();
-            if (questId)
-                questIds.push_back(questId);
-        } while (resquests->NextRow());
-
-        uint32 randomIdx = rand()%questIds.size();
-        uint32 chosenQuestId = questIds.at(randomIdx);
-        WorldDatabase.PQuery("UPDATE quest_pool_current SET quest_id = %u WHERE pool_id = %u", chosenQuestId, poolId);
-    } while (result->NextRow());
-
-    LoadQuestPoolsData();
+    sPoolMgr->ChangeDailyQuests();
 }
 
 void World::SetPlayerLimit(int32 limit)

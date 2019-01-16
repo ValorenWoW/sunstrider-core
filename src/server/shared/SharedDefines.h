@@ -444,7 +444,7 @@ enum SpellAttr0
     SPELL_ATTR0_CASTABLE_WHILE_DEAD            = 0x00800000,           // 23 castable while dead
     SPELL_ATTR0_CASTABLE_WHILE_MOUNTED         = 0x01000000,           // 24 castable while mounted
     SPELL_ATTR0_DISABLED_WHILE_ACTIVE          = 0x02000000,           // 25 Activate and start cooldown after aura fade or remove summoned creature or go
-    SPELL_ATTR0_NEGATIVE_1                     = 0x04000000,           // 26 Not sure, many negative spells have this attr
+    SPELL_ATTR0_AURA_IS_DEBUFF                 = 0x04000000,           // 26 (from cmangos, was SPELL_ATTR0_NEGATIVE_1 on TC)
     SPELL_ATTR0_CASTABLE_WHILE_SITTING         = 0x08000000,           // 27 castable while sitting
     SPELL_ATTR0_CANT_USED_IN_COMBAT            = 0x10000000,           // 28 Cannot be used in combat
     SPELL_ATTR0_UNAFFECTED_BY_INVULNERABILITY  = 0x20000000,           // 29 unaffected by invulnerability (hmm possible not...)
@@ -1896,16 +1896,6 @@ enum LockType
     LOCKTYPE_FISHING               = 19
 };
 
-enum TrainerType                                            // this is important type for npcs!
-{
-    TRAINER_TYPE_CLASS             = 0,
-    TRAINER_TYPE_MOUNTS            = 1,                     // on blizz it's 2
-    TRAINER_TYPE_TRADESKILLS       = 2,
-    TRAINER_TYPE_PETS              = 3
-};
-
-#define MAX_TRAINER_TYPE 4
-
 enum CreatureType
 {
     CREATURE_TYPE_BEAST            = 1,
@@ -2447,9 +2437,9 @@ enum ChatMsg : uint32
 enum ChatLinkColors : uint32
 {
     CHAT_LINK_COLOR_SPELL       = 0xff71d5ff,   // bright blue
+    CHAT_LINK_COLOR_TALENT      = 0xff4e96f7,   // blue
 #ifdef LICH_KING
     CHAT_LINK_COLOR_TRADE       = 0xffffd000,   // orange
-    CHAT_LINK_COLOR_TALENT      = 0xff4e96f7,   // blue
     CHAT_LINK_COLOR_ENCHANT     = 0xffffd000,   // orange
     CHAT_LINK_COLOR_ACHIEVEMENT = 0xffffff00,
     CHAT_LINK_COLOR_GLYPH       = 0xff66bbff,
@@ -2509,26 +2499,26 @@ enum DiminishingGroup : uint32
 {
     // Common Groups
     DIMINISHING_NONE                                  = 0,
-    DIMINISHING_CONTROLLED_STUN,                            // Player Controlled stuns
-    DIMINISHING_TRIGGER_STUN,                               // By aura proced stuns, usualy chance on hit talents
+    DIMINISHING_CONTROLLED_STUN,                          // Player Controlled stuns
+    DIMINISHING_STUN,                                     // By aura proced stuns, usualy chance on hit talents
     DIMINISHING_SLEEP,
-    DIMINISHING_CONTROLLED_ROOT,                            // Immobilizing effects from casted spells
-    DIMINISHING_TRIGGER_ROOT,                               // Immobilizing effects from triggered spells like Frostbite
-    DIMINISHING_FEAR,                                       // Non-warlock fears
-    DIMINISHING_CHARM,
-    // Mage Specific
-    DIMINISHING_POLYMORPH,
-    // Rogue Specific
-    DIMINISHING_KIDNEYSHOT,                                 // Kidney Shot is not diminished with Cheap Shot
+    DIMINISHING_CONTROLLED_ROOT,                          // Immobilizing effects from casted spells
+    DIMINISHING_ROOT,                                     // Immobilizing effects from triggered spells like Frostbite
+    DIMINISHING_FEAR,                                     // Non-warlock fears
+    DIMINISHING_MIND_CONTROL,
     // Warlock Specific
-    DIMINISHING_DEATHCOIL,                                  // Death Coil Diminish only with another Death Coil
-    DIMINISHING_WARLOCK_FEAR,                               // Also with Sedduction
+    DIMINISHING_HORROR,                                   // Death Coil Diminish only with another Death Coil
     // Shared Class Specific
-    DIMINISHING_BLIND_CYCLONE,                              // From 2.3.0
-    DIMINISHING_DISARM,                                     // From 2.3.0
-    DIMINISHING_SILENCE,                                    // From 2.3.0
-    DIMINISHING_FREEZE,                                     // Hunter's Freezing Trap
-    DIMINISHING_KNOCKOUT,                                   // Also with Sap, all Knockout mechanics are here
+#ifdef LICH_KING
+    DIMINISHING_CYCLONE,
+    DIMINISHING_OPENING_STUN,                             // Cheap Shot and Pounce
+#else
+    DIMINISHING_BLIND_CYCLONE,                            // From 2.3.0
+    DIMINISHING_KIDNEY_SHOT,
+#endif
+    DIMINISHING_DISARM,                                   // From 2.3.0
+    DIMINISHING_SILENCE,                                  // From 2.3.0
+    DIMINISHING_DISORIENT,                                // Also with Sap, all Knockout mechanics are here
     DIMINISHING_BANISH,
     // Other
     // Don't Diminish, but limit duration to 10s

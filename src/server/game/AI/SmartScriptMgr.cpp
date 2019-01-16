@@ -16,7 +16,7 @@
 #include "WaypointDefines.h"
 
 //from waypoints table
-WaypointPath const* SmartWaypointMgr::GetPath(uint32 id)
+WaypointPath const* SmartWaypointMgr::GetPath(uint32 id) const
 {
     auto itr = _waypointStore.find(id);
     if (itr != _waypointStore.end())
@@ -34,7 +34,7 @@ void SmartWaypointMgr::LoadFromDB()
 
     if (!result)
     {
-        TC_LOG_INFO("FIXME",">> Loaded 0 SmartAI Waypoint Paths. DB table `waypoints` is empty.");
+        TC_LOG_INFO("sql.sql",">> Loaded 0 SmartAI Waypoint Paths. DB table `waypoints` is empty.");
 
         return;
     }
@@ -94,6 +94,8 @@ void SmartAIMgr::LoadSmartAIFromDB()
         i.clear();  //Drop Existing SmartAI List
 
     PreparedStatement* stmt = WorldDatabase.GetPreparedStatement(WORLD_SEL_SMART_SCRIPTS);
+    stmt->setUInt32(0, sWorld->GetWowPatch());
+    stmt->setUInt32(1, sWorld->GetWowPatch());
     PreparedQueryResult result = WorldDatabase.Query(stmt);
 
     if (!result)

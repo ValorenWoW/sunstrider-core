@@ -14,6 +14,7 @@
 #include "World.h"
 #include "Position.h"
 #include "IteratorPair.h"
+#include "Trainer.h"
 
 #include <string>
 #include <map>
@@ -107,6 +108,9 @@ enum eScriptFlags
     // PlaySound flags
     SF_PLAYSOUND_TARGET_PLAYER    = 0x1,
     SF_PLAYSOUND_DISTANCE_SOUND   = 0x2,
+    
+    // Orientation flags
+    SF_ORIENTATION_FACE_TARGET    = 0x1
 };
 
 
@@ -251,11 +255,48 @@ struct ScriptInfo
             int32  RemoveCorpse;    // dataint
         } Kill;
 
-        struct                      // SCRIPT_COMMAND_SMART_SET_DATA
+        struct                      // SCRIPT_COMMAND_SMART_SET_DATA (23) (sun custom)
         {
             uint32 DataID;          // datalong
             uint32 Value;           // datalong2
         } SmartSetData;
+
+        
+        struct                      // SCRIPT_COMMAND_ORIENTATION (30)
+        {
+            uint32 Flags;           // datalong
+            uint32 Unused1;         // datalong2
+            int32  Unused2;         // dataint
+
+            float Unused3;
+            float Unused4;
+            float Unused5;
+            float Orientation;
+        } Orientation;
+
+        struct                      // SCRIPT_COMMAND_EQUIP (31)
+        {
+            uint32 EquipmentID;     // datalong
+        } Equip;
+
+        struct                      // SCRIPT_COMMAND_MODEL (32)
+        {
+            uint32 ModelID;         // datalong
+        } Model;
+
+                                    // SCRIPT_COMMAND_CLOSE_GOSSIP (33)
+
+        struct                      // SCRIPT_COMMAND_PLAYMOVIE (34)
+        {
+            uint32 MovieID;         // datalong
+        } PlayMovie;
+
+        struct                       // SCRIPT_COMMAND_MOVEMENT (35)
+        {
+            uint32 MovementType;     // datalong
+            uint32 MovementDistance; // datalong2
+            int32  Path;             // dataint
+        } Movement;
     };
 
     std::string GetDebugInfo() const;
@@ -385,7 +426,10 @@ typedef std::multimap<uint32, SpawnData const*> SpawnGroupLinkContainer;
 typedef std::unordered_map<uint16, std::vector<InstanceSpawnGroupInfo>> InstanceSpawnGroupContainer;
 typedef std::map<TempSummonGroupKey, std::vector<TempSummonData>> TempSummonDataContainer;
 
-typedef std::multimap<uint32,uint32> QuestRelations;
+typedef std::multimap<uint32, uint32> QuestRelations; // unit/go -> quest
+typedef std::multimap<uint32, uint32> QuestRelationsReverse; // quest -> unit/go
+typedef std::pair<QuestRelations::const_iterator, QuestRelations::const_iterator> QuestRelationBounds;
+typedef std::pair<QuestRelationsReverse::const_iterator, QuestRelationsReverse::const_iterator> QuestRelationReverseBounds;
 
 // Benchmarked: Faster than std::unordered_map (insert/find)
 typedef std::map<uint32, PageText> PageTextContainer;
@@ -457,7 +501,6 @@ typedef std::unordered_map<uint32, uint32> CacheNpcTextIdMap;
 typedef std::unordered_map<uint32, uint32> CacheGoTextIdMap;
 
 typedef std::unordered_map<uint32, VendorItemData> CacheVendorItemMap;
-typedef std::unordered_map<uint32, TrainerSpellData> CacheTrainerSpellMap;
 
 typedef std::unordered_map<uint32, ItemExtendedCostEntry> ItemExtendedStore;
 
@@ -764,10 +807,52 @@ class TC_GAME_API ObjectMgr
         void LoadCreatureQuestStarters();
         void LoadCreatureQuestEnders();
 
-        QuestRelations mGOQuestRelations;
-        QuestRelations mGOQuestInvolvedRelations;
-        QuestRelations mCreatureQuestRelations;
-        QuestRelations mCreatureQuestInvolvedRelations;
+        QuestRelations* GetGOQuestRelationMap()
+        {
+            return &_goQuestRelations;
+        }
+
+        QuestRelationBounds GetGOQuestRelationBounds(uint32 go_entry) const
+        {
+            return _goQuestRelations.equal_range(go_entry);
+        }
+
+        QuestRelationBounds GetGOQuestInvolvedRelationBounds(uint32 go_entry) const
+        {
+            return _goQuestInvolvedRelations.equal_range(go_entry);
+        }
+
+        QuestRelationReverseBounds GetGOQuestInvolvedRelationReverseBounds(uint32 questId) const
+        {
+            return _goQuestInvolvedRelationsReverse.equal_range(questId);
+        }
+
+        QuestRelations* GetCreatureQuestRelationMap()
+        {
+            return &_creatureQuestRelations;
+        }
+
+        QuestRelationBounds GetCreatureQuestRelationBounds(uint32 creature_entry) const
+        {
+            return _creatureQuestRelations.equal_range(creature_entry);
+        }
+
+        QuestRelationBounds GetCreatureQuestInvolvedRelationBounds(uint32 creature_entry) const
+        {
+            return _creatureQuestInvolvedRelations.equal_range(creature_entry);
+        }
+
+        QuestRelationReverseBounds GetCreatureQuestInvolvedRelationReverseBounds(uint32 questId) const
+        {
+            return _creatureQuestInvolvedRelationsReverse.equal_range(questId);
+        }
+
+        QuestRelations _goQuestRelations;
+        QuestRelations _goQuestInvolvedRelations;
+        QuestRelationsReverse _goQuestInvolvedRelationsReverse;
+        QuestRelations _creatureQuestRelations;
+        QuestRelations _creatureQuestInvolvedRelations;
+        QuestRelationsReverse _creatureQuestInvolvedRelationsReverse;
 
         void LoadGameObjectScripts();
         void LoadQuestEndScripts();
@@ -837,7 +922,6 @@ class TC_GAME_API ObjectMgr
         void LoadReputationOnKill();
 
         void LoadPointsOfInterest();
-        void LoadQuestPOI();
 
         void LoadWeatherZoneChances();
         void LoadGameTele();
@@ -845,9 +929,9 @@ class TC_GAME_API ObjectMgr
         void LoadGossipMenu();
         //load both gossip_menu_option and gossip_menu_option_generic
         void LoadGossipMenuItems();
-        void LoadCreatureGossip();
         void LoadVendors();
-        void LoadTrainerSpell();
+        void LoadTrainers();
+        void LoadCreatureDefaultTrainers();
 
         void InitializeQueriesData(QueryDataGroup mask);
 
@@ -1097,28 +1181,7 @@ class TC_GAME_API ObjectMgr
             return _gossipMenuItemsStore.equal_range(uiMenuId);
         }
 
-        uint32 GetNpcGossipMenu(ObjectGuid::LowType guid) const
-        {
-            auto iter = m_mCacheNpcMenuIdMap.find(guid);
-            if(iter == m_mCacheNpcMenuIdMap.end())
-                return 0;
-
-            return iter->second;
-        }
-
-        uint32 GetGameobjectGossipMenu(ObjectGuid::LowType guid) const
-        {
-            auto iter = m_mCacheGoMenuIdMap.find(guid);
-            if(iter == m_mCacheGoMenuIdMap.end())
-                return 0;
-
-            return iter->second;
-        }
-
-        TrainerSpellData const* GetNpcTrainerSpells(uint32 entry) const
-        {
-            return Trinity::Containers::MapGetValuePtr(m_mCacheTrainerSpellMap, entry);
-        }
+        Trainer::Trainer const* GetTrainer(uint32 creatureId) const;
 
         VendorItemData const* GetNpcVendorItemList(uint32 entry) const
         {
@@ -1127,8 +1190,6 @@ class TC_GAME_API ObjectMgr
         void AddVendorItem(uint32 entry,ItemTemplate const *proto, uint32 maxcount, uint32 incrtime, uint32 ExtendedCost, bool savetodb = false); // for event
         bool RemoveVendorItem(uint32 entry,ItemTemplate const *proto, bool savetodb = false); // for event
         bool IsVendorItemValid( uint32 vendor_entry, ItemTemplate const *proto, uint32 maxcount, uint32 ptime, uint32 ExtendedCost, Player* pl = nullptr, std::set<uint32>* skip_vendors = nullptr, uint32 ORnpcflag = 0 ) const;
-        bool AddTrainerSpell(uint32 creatureId, TrainerSpell const& spell);
-        bool RemoveTrainerSpell(uint32 creatureId, uint32 spellId);
 
         void LoadScriptNames();
         ScriptNameContainer const& GetAllScriptNames() const;
@@ -1157,6 +1218,8 @@ class TC_GAME_API ObjectMgr
         void LoadFactionChangeTitles();
         void LoadFactionChangeQuests();
         void LoadFactionChangeReputGeneric();
+
+        void RestoreDeletedItems();
 
         bool IsTransportMap(uint32 mapId) const { return _transportMaps.count(mapId); }
 
@@ -1254,7 +1317,7 @@ class TC_GAME_API ObjectMgr
 
     private:
         void LoadScripts(ScriptMapMap& scripts, char const* tablename);
-        void LoadQuestRelationsHelper(QuestRelations& map,char const* table);
+        void LoadQuestRelationsHelper(QuestRelations& map, QuestRelationsReverse* reverseMap, std::string const& table, bool starter, bool go);
 
         typedef std::unordered_map<uint32 /*creatureId*/, std::unique_ptr<PetLevelInfo[] /*level*/>> PetLevelInfoContainer;
         PetLevelInfoContainer _petInfoStore;                            // [creature_id][level]
@@ -1293,10 +1356,9 @@ class TC_GAME_API ObjectMgr
         GossipMenusContainer _gossipMenusStore;
         GossipMenuItemsContainer _gossipMenuItemsStore;
         PointOfInterestContainer _pointsOfInterestStore;
-        CacheGoTextIdMap m_mCacheGoMenuIdMap;
-        CacheNpcTextIdMap m_mCacheNpcMenuIdMap;
         CacheVendorItemMap m_mCacheVendorItemMap;
-        CacheTrainerSpellMap m_mCacheTrainerSpellMap;
+        std::unordered_map<uint32, Trainer::Trainer> _trainers;
+        std::unordered_map<uint32, uint32> _creatureDefaultTrainers;
 
         ItemExtendedStore sItemExtendedCostStore;
 

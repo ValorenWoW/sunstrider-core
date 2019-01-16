@@ -57,23 +57,6 @@ std::string CreatureMovementData::ToString() const
     return str.str();
 }
 
-void TrainerSpellData::Clear()
-{
-    for (auto & itr : spellList)
-        delete itr;
-
-    spellList.clear();
-}
-
-TrainerSpell const* TrainerSpellData::Find(uint32 spell_id) const
-{
-    for(auto itr : spellList)
-        if(itr->spell == spell_id)
-            return itr;
-
-    return nullptr;
-}
-
 bool VendorItemData::RemoveItem( uint32 item_id )
 {
     for(auto i = m_items.begin(); i != m_items.end(); ++i )
@@ -265,7 +248,7 @@ Creature::Creature(bool isWorldObject) : Unit(isWorldObject), MapObject(),
     m_corpseRemoveTime(0),
     m_respawnTime(0), 
     m_respawnDelay(25),
-    m_corpseDelay(60), 
+    m_corpseDelay(0), 
     m_respawnradius(0.0f),
     m_reactState(REACT_AGGRESSIVE), 
     m_defaultMovementType(IDLE_MOTION_TYPE), 
@@ -642,7 +625,8 @@ bool Creature::UpdateEntry(uint32 Entry, const CreatureData* data)
     SetUInt32Value(UNIT_DYNAMIC_FLAGS, dynamicflags);
 
     SetMeleeDamageSchool(SpellSchools(cInfo->dmgschool));
-    CreatureBaseStats const* stats = sObjectMgr->GetCreatureBaseStats(GetLevel(), cInfo->unit_class);
+    //sun: level + 3 for world bosses. This is verified for armor as bosses listed armor are the lvl 73 values instead of the 70.
+    CreatureBaseStats const* stats = sObjectMgr->GetCreatureBaseStats(IsWorldBoss() ? GetLevel() + 3 : GetLevel(), cInfo->unit_class);
     float armor = (float)stats->GenerateArmor(cInfo); /// @todo Why is this treated as uint32 when it's a float?
     SetStatFlatModifier(UNIT_MOD_ARMOR,             BASE_VALUE, armor);
     SetStatFlatModifier(UNIT_MOD_RESISTANCE_HOLY,   BASE_VALUE, float(cInfo->resistance[SPELL_SCHOOL_HOLY-1])); //shifted by 1 because SPELL_SCHOOL_NORMAL is not in array
@@ -1037,8 +1021,8 @@ void Creature::RegenerateHealth()
 
 bool Creature::AIM_Destroy()
 {
-    SetAI(nullptr);
-
+    PopAI();
+    RefreshAI();
     return true;
 }
 
@@ -1108,8 +1092,10 @@ bool Creature::Create(ObjectGuid::LowType guidlow, Map *map, uint32 phaseMask, u
     if (GetCreatureTemplate()->flags_extra & CREATURE_FLAG_EXTRA_DUNGEON_BOSS && map->IsDungeon())
         m_respawnDelay = 0; // special value, prevents respawn for dungeon bosses unless overridden
 
-    switch (GetCreatureTemplate()->rank)
+    if(!(GetCreatureTemplate()->flags_extra & CREATURE_FLAG_NO_CORPSE_UPON_DEATH))
     {
+        switch (GetCreatureTemplate()->rank)
+        {
         case CREATURE_ELITE_RARE:
             m_corpseDelay = sWorld->getConfig(CONFIG_CORPSE_DECAY_RARE);
             break;
@@ -1125,7 +1111,9 @@ bool Creature::Create(ObjectGuid::LowType guidlow, Map *map, uint32 phaseMask, u
         default:
             m_corpseDelay = sWorld->getConfig(CONFIG_CORPSE_DECAY_NORMAL);
             break;
-    }
+        }
+    } //else, keep at 0
+
     LoadCreatureAddon();
     InitCreatureAddon();
 
@@ -1246,11 +1234,13 @@ void Creature::InitializeReactState()
         SetReactState(REACT_AGGRESSIVE);
 }
 
-bool Creature::isCanTrainingAndResetTalentsOf(Player* player) const
+bool Creature::CanResetTalents(Player* player) const
 {
-    return player->GetLevel() >= 10
-        && GetCreatureTemplate()->trainer_type == TRAINER_TYPE_CLASS
-        && player->GetClass() == GetCreatureTemplate()->trainer_class;
+    Trainer::Trainer const* trainer = sObjectMgr->GetTrainer(GetEntry());
+    if (!trainer)
+        return false;
+
+    return player->GetLevel() >= 10 && trainer->IsTrainerValidForPlayer(player) && trainer->GetTrainerType() == Trainer::Type::Class;
 }
 
 bool Creature::isCanInteractWithBattleMaster(Player* pPlayer, bool msg) const
@@ -1267,26 +1257,19 @@ bool Creature::isCanInteractWithBattleMaster(Player* pPlayer, bool msg) const
         pPlayer->PlayerTalkClass->ClearMenus();
         switch(bgTypeId)
         {
-            case BATTLEGROUND_AV:  pPlayer->PlayerTalkClass->SendGossipMenuTextID(7616,GetGUID()); break;
-            case BATTLEGROUND_WS:  pPlayer->PlayerTalkClass->SendGossipMenuTextID(7599,GetGUID()); break;
-            case BATTLEGROUND_AB:  pPlayer->PlayerTalkClass->SendGossipMenuTextID(7642,GetGUID()); break;
+            case BATTLEGROUND_AV:  pPlayer->PlayerTalkClass->SendGossipMenu(7616,GetGUID()); break;
+            case BATTLEGROUND_WS:  pPlayer->PlayerTalkClass->SendGossipMenu(7599,GetGUID()); break;
+            case BATTLEGROUND_AB:  pPlayer->PlayerTalkClass->SendGossipMenu(7642,GetGUID()); break;
             case BATTLEGROUND_EY:
             case BATTLEGROUND_NA:
             case BATTLEGROUND_BE:
             case BATTLEGROUND_AA:
-            case BATTLEGROUND_RL:  pPlayer->PlayerTalkClass->SendGossipMenuTextID(10024,GetGUID()); break;
+            case BATTLEGROUND_RL:  pPlayer->PlayerTalkClass->SendGossipMenu(10024,GetGUID()); break;
             break;
         }
         return false;
     }
     return true;
-}
-
-bool Creature::canResetTalentsOf(Player* pPlayer) const
-{
-    return pPlayer->GetLevel() >= 10
-        && GetCreatureTemplate()->trainer_type == TRAINER_TYPE_CLASS
-        && pPlayer->GetClass() == GetCreatureTemplate()->trainer_class;
 }
 
 Player* Creature::GetLootRecipient() const
@@ -1413,10 +1396,14 @@ void Creature::SaveToDB(uint32 mapid, uint8 spawnMask)
     std::ostringstream ss;
     ss << "INSERT INTO creature (spawnId,map,spawnMask,modelid,equipment_id,position_x,position_y,position_z,orientation,spawntimesecs,spawndist,currentwaypoint,curhealth,curmana,MovementType, pool_id, patch_min, patch_max) VALUES ("
         << m_spawnId << ","
-        << mapid <<","
-        << (uint32)spawnMask << ","
-        << displayId <<","
-        << GetCurrentEquipmentId() <<","
+        << mapid << ","
+        << (uint32)spawnMask << ",";
+        if (displayId)
+            ss << displayId << ",";
+        else
+            ss << "NULL" << ",";
+
+        ss << GetCurrentEquipmentId() <<","
         << data.spawnPoint.GetPositionX() << ","
         << data.spawnPoint.GetPositionY() << ","
         << data.spawnPoint.GetPositionZ() << ","
@@ -1587,6 +1574,7 @@ bool Creature::LoadFromDB(uint32 spawnId, Map *map, bool addToMap, bool allowDup
         TC_LOG_ERROR("sql.sql","Creature (SpawnID : %u) not found in table `creature`, can't load. ", spawnId);
         return false;
     }
+    ASSERT(data->IsPatchEnabled());
     
     m_chosenTemplate = data->ChooseSpawnEntry();
     // Rare creatures in dungeons have 15% chance to spawn
@@ -1601,7 +1589,7 @@ bool Creature::LoadFromDB(uint32 spawnId, Map *map, bool addToMap, bool allowDup
     m_respawnCompatibilityMode = ((data->spawnGroupData->flags & SPAWNGROUP_FLAG_COMPATIBILITY_MODE) != 0);
     m_creatureData = data;
     m_respawnradius = data->spawndist;
-    m_respawnDelay = data->spawntimesecs;
+    m_respawnDelay = data->spawntimesecs_max ? urand(data->spawntimesecs, data->spawntimesecs_max) : data->spawntimesecs;
 
     // Is the creature script objecting to us spawning? If yes, delay by a little bit (then re-check in ::Update)
     if (!m_respawnTime && !map->IsSpawnGroupActive(data->spawnGroupData->groupId))
@@ -1744,7 +1732,7 @@ bool Creature::HasMainWeapon() const
 
 bool Creature::HasQuest(uint32 quest_id) const
 {
-    QuestRelations const& qr = sObjectMgr->mCreatureQuestRelations;
+    QuestRelations const& qr = sObjectMgr->_creatureQuestRelations;
     for(auto itr = qr.lower_bound(GetEntry()); itr != qr.upper_bound(GetEntry()); ++itr)
     {
         if(itr->second==quest_id)
@@ -1755,7 +1743,7 @@ bool Creature::HasQuest(uint32 quest_id) const
 
 bool Creature::HasInvolvedQuest(uint32 quest_id) const
 {
-    QuestRelations const& qr = sObjectMgr->mCreatureQuestInvolvedRelations;
+    QuestRelations const& qr = sObjectMgr->_creatureQuestInvolvedRelations;
     for(auto itr = qr.lower_bound(GetEntry()); itr != qr.upper_bound(GetEntry()); ++itr)
     {
         if(itr->second==quest_id)
@@ -2972,11 +2960,6 @@ uint32 Creature::UpdateVendorItemCurrentCount(VendorItem const* vItem, uint32 us
     return vCount->count;
 }
 
-TrainerSpellData const* Creature::GetTrainerSpells() const
-{
-    return sObjectMgr->GetNpcTrainerSpells(GetEntry());
-}
-
 // overwrite WorldObject function for proper name localization
 std::string const& Creature::GetNameForLocaleIdx(LocaleConstant loc_idx) const
 {
@@ -3340,9 +3323,13 @@ void Creature::_SetCanFly(bool enable, bool updateMovementFlags /* = true */)
         UpdateMovementFlags();
 }
 
-void Creature::UpdateMovementFlags(bool force /* = false */)
+void Creature::UpdateMovementFlags(bool force /* = false */, Optional<Position> forPosition /*= {}*/)
 {
-    if (!force && GetExactDistSq(m_lastMovementFlagsPosition) < 2.5f*2.5f)
+    bool givenPosition = forPosition.is_initialized();
+    if (!givenPosition)
+        forPosition = GetPosition();
+
+    if (!force && forPosition->GetExactDistSq(m_lastMovementFlagsPosition) < 2.5f*2.5f)
         return;
 
     // Do not update movement flags if creature is controlled by a player (charm/vehicle)
@@ -3350,12 +3337,12 @@ void Creature::UpdateMovementFlags(bool force /* = false */)
         return;
 
     // Set the movement flags if the creature is in that mode. (Only fly if actually in air, only swim if in water, etc)
-    float ground = GetFloorZ();
+    float ground = givenPosition ? GetMapHeight(POSITION_GET_X_Y_Z(forPosition)) : GetFloorZ();
 
 #ifdef LICH_KING
-    bool isInAir = (G3D::fuzzyGt(GetPositionZ(), ground + (canHover ? GetFloatValue(UNIT_FIELD_HOVERHEIGHT) : 0.0f) + GROUND_HEIGHT_TOLERANCE) || G3D::fuzzyLt(GetPositionZ(), ground - GROUND_HEIGHT_TOLERANCE)); // Can be underground too, prevent the falling
+    bool isInAir = (G3D::fuzzyGt(forPosition->GetPositionZ(), ground + (canHover ? GetFloatValue(UNIT_FIELD_HOVERHEIGHT) : 0.0f) + GROUND_HEIGHT_TOLERANCE) || G3D::fuzzyLt(GetPositionZ(), ground - GROUND_HEIGHT_TOLERANCE)); // Can be underground too, prevent the falling
 #else
-    bool isInAir = (G3D::fuzzyGt(GetPositionZ(), ground + GROUND_HEIGHT_TOLERANCE) || G3D::fuzzyLt(GetPositionZ(), ground - GROUND_HEIGHT_TOLERANCE)); // Can be underground too, prevent the falling
+    bool isInAir = (G3D::fuzzyGt(forPosition->GetPositionZ(), ground + GROUND_HEIGHT_TOLERANCE) || G3D::fuzzyLt(forPosition->GetPositionZ(), ground - GROUND_HEIGHT_TOLERANCE)); // Can be underground too, prevent the falling
 #endif
 
     if (CanFly() && isInAir && !IsFalling())
@@ -3380,7 +3367,8 @@ void Creature::UpdateMovementFlags(bool force /* = false */)
         RemoveUnitMovementFlag(MOVEMENTFLAG_JUMPING_OR_FALLING);
 
     SetSwim(CanSwim() && IsInWater());
-    m_lastMovementFlagsPosition = GetPosition();
+    if(!givenPosition)
+        m_lastMovementFlagsPosition = GetPosition();
 }
 
 bool Creature::IsInEvadeMode() const 

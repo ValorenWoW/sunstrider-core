@@ -16,6 +16,7 @@
 #include "Mail.h"
 #include "Config.h"
 #include "Pet.h"
+#include "SmartEnum.h"
 
 #ifdef PLAYERBOT
 #include "playerbot.h"
@@ -713,12 +714,24 @@ public:
         if(!damageStr)
             return false;
 
-        int32 damage = atoi((char*)damageStr);
-        if(damage <=0)
+        int32 damage_int = atoi((char*)damageStr);
+        if (damage_int <= 0)
             return true;
 
+        uint32 damage = damage_int;
+
         char* schoolStr = strtok((char*)nullptr, " ");
-        uint32 school = schoolStr ? atoi((char*)schoolStr) : SPELL_SCHOOL_NORMAL;
+
+        // flat melee damage without resistence/etc reduction
+        if (!schoolStr)
+        {
+            Unit::DealDamage(handler->GetSession()->GetPlayer(), target, damage, nullptr, DIRECT_DAMAGE, SPELL_SCHOOL_MASK_NORMAL, nullptr, false);
+            if (target != handler->GetSession()->GetPlayer())
+                handler->GetSession()->GetPlayer()->SendAttackStateUpdate(HITINFO_NORMALSWING2, target, 1, SPELL_SCHOOL_MASK_NORMAL, damage, 0, 0, VICTIMSTATE_NORMAL, 0);
+            return true;
+        }
+
+        uint32 school = atoi((char*)schoolStr);
         if(school >= MAX_SPELL_SCHOOL)
             return false;
 
@@ -732,11 +745,20 @@ public:
         // melee damage by specific school
         if(!spellStr)
         {
-            DamageInfo damageInfo(handler->GetSession()->GetPlayer(), target, damage, nullptr, schoolmask, SPELL_DIRECT_DAMAGE, BASE_ATTACK);
-            Unit::CalcAbsorbResist(damageInfo);
+            Player* attacker = handler->GetSession()->GetPlayer();
+            DamageInfo dmgInfo(attacker, target, damage, nullptr, schoolmask, SPELL_DIRECT_DAMAGE, BASE_ATTACK);
+            Unit::CalcAbsorbResist(dmgInfo);
 
-            Unit::DealDamage(handler->GetSession()->GetPlayer(), target, damageInfo.GetDamage(), nullptr, DIRECT_DAMAGE, schoolmask, nullptr, false);
-            handler->GetSession()->GetPlayer()->SendAttackStateUpdate(HITINFO_NORMALSWING2, target, 1, schoolmask, damageInfo.GetDamage(), damageInfo.GetAbsorb(), damageInfo.GetResist(), VICTIMSTATE_NORMAL, 0);
+            if (!dmgInfo.GetDamage())
+                return true;
+
+            damage = dmgInfo.GetDamage();
+
+            uint32 absorb = dmgInfo.GetAbsorb();
+            uint32 resist = dmgInfo.GetResist();
+            Unit::DealDamageMods(target, damage, &absorb);
+            Unit::DealDamage(attacker, target, damage, nullptr, DIRECT_DAMAGE, schoolmask, nullptr, false);
+            handler->GetSession()->GetPlayer()->SendAttackStateUpdate(HITINFO_NORMALSWING2, target, 0, schoolmask, dmgInfo.GetDamage(), dmgInfo.GetAbsorb(), dmgInfo.GetResist(), VICTIMSTATE_NORMAL, 0);
             return true;
         }
 
@@ -1256,8 +1278,8 @@ public:
         float x, y, z;
         motionMaster->GetDestination(x, y, z);
 
-        std::vector<MovementGeneratorInformation> list = unit->GetMotionMaster()->GetMovementGeneratorsInformation();
-        for (MovementGeneratorInformation info : list)
+        std::vector<MovementGeneratorInformation> const list = unit->GetMotionMaster()->GetMovementGeneratorsInformation();
+        for (MovementGeneratorInformation const& info : list)
         {
             switch (info.Type)
             {
@@ -1647,7 +1669,11 @@ public:
         handler->PSendSysMessage("Target (%u) moveflags = 0x%s", 
             target->GetGUID().GetCounter(), 
             stream.str().c_str());
-
+         /* Needs to have data generated like for UnitFlags for this to work
+        for (MovementFlags flag : EnumUtils::Iterate<MovementFlags>())
+            if (target->GetUnitMovementFlags() & flag)
+                handler->PSendSysMessage("* %s (0x%X)", EnumUtils::ToTitle(flag), flag);
+        */
         return true;
     }
 

@@ -510,14 +510,7 @@ void WorldSession::HandlePushQuestToParty(WorldPacket& recvPacket)
             continue;
         }
 
-        if (sWorld->IsQuestInAPool(questId)) {
-            if (!sWorld->IsQuestCurrentOfAPool(questId)) {
-                ChatHandler(sender).PSendSysMessage("This quest is not available today, you can't share it.");
-                break;  // Quest cannot be shared today, no point continuing
-            }
-        }
-
-        if( !receiver->CanTakeQuest(quest, false ) )
+        if (!receiver->CanTakeQuest(quest, false))
         {
             sender->SendPushToPartyResponse(receiver, QUEST_PARTY_MSG_CANT_TAKE_QUEST );
             continue;
@@ -577,28 +570,28 @@ void WorldSession::HandleQuestPushResult(WorldPacket& recvPacket)
 
 QuestGiverStatus Player::GetQuestDialogStatus(Object* questgiver)
 {
-    QuestGiverStatus result = DIALOG_STATUS_NONE;
-
-    QuestRelations const* qir;
-    QuestRelations const* qr;
+    QuestRelationBounds qr;
+    QuestRelationBounds qir;
 
     switch(questgiver->GetTypeId())
     {
         case TYPEID_GAMEOBJECT:
         {
-            if (auto questStatus = questgiver->ToGameObject()->AI()->GetDialogStatus(this))
-                return *questStatus;
-            qir = &sObjectMgr->mGOQuestInvolvedRelations;
-            qr  = &sObjectMgr->mGOQuestRelations;
+            if (auto ai = questgiver->ToGameObject()->AI())
+                if (auto questStatus = ai->GetDialogStatus(this))
+                    return *questStatus;
+            qr = sObjectMgr->GetGOQuestRelationBounds(questgiver->GetEntry());
+            qir = sObjectMgr->GetGOQuestInvolvedRelationBounds(questgiver->GetEntry());
             break;
         }
         case TYPEID_UNIT:
         {
-            if (auto questStatus = questgiver->ToCreature()->AI()->GetDialogStatus(this))
-                return *questStatus;
+            if (auto ai = questgiver->ToCreature()->AI())
+                if (auto questStatus = ai->GetDialogStatus(this))
+                    return *questStatus;
 
-            qir = &sObjectMgr->mCreatureQuestInvolvedRelations;
-            qr  = &sObjectMgr->mCreatureQuestRelations;
+            qr = sObjectMgr->GetCreatureQuestRelationBounds(questgiver->GetEntry());
+            qir = sObjectMgr->GetCreatureQuestInvolvedRelationBounds(questgiver->GetEntry());
             break;
         }
         default:
@@ -607,7 +600,9 @@ QuestGiverStatus Player::GetQuestDialogStatus(Object* questgiver)
             return DIALOG_STATUS_NONE;
     }
 
-    for(auto i = qir->lower_bound(questgiver->GetEntry()); i != qir->upper_bound(questgiver->GetEntry()); ++i )
+    QuestGiverStatus result = DIALOG_STATUS_NONE;
+
+    for (QuestRelations::const_iterator i = qir.first; i != qir.second; ++i)
     {
         QuestGiverStatus result2 = DIALOG_STATUS_NONE;
         uint32 quest_id = i->second;
@@ -631,7 +626,7 @@ QuestGiverStatus Player::GetQuestDialogStatus(Object* questgiver)
             result = result2;
     }
 
-    for(auto i = qr->lower_bound(questgiver->GetEntry()); i != qr->upper_bound(questgiver->GetEntry()); ++i )
+    for (QuestRelations::const_iterator i = qr.first; i != qr.second; ++i)
     {
         QuestGiverStatus result2 = DIALOG_STATUS_NONE;
         uint32 quest_id = i->second;

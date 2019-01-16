@@ -265,6 +265,7 @@ public:
 };
 
 // 31801 - Seal of Vengeance
+// TLK 53736 - Seal of Corruption
 template <uint32 DoTSpellId, uint32 DamageSpellId>
 class spell_pal_seal_of_vengeance : public SpellScriptLoader
 {
@@ -289,7 +290,7 @@ class spell_pal_seal_of_vengeance : public SpellScriptLoader
             When an auto-attack lands (does not dodge/parry/miss) that can proc a seal the of the following things happen independently of each other (see 2 roll system).
 
             1) A "hidden strike" which uses melee combat mechanics occurs. If it lands it refreshes/stacks SoV DoT. Only white swings can trigger a refresh or stack. (This hidden strike mechanic can also proc things like berserking..)
-            2) A weapon damage based proc will occur if you used a special (CS/DS/judge) or if you have a 5 stack (from auto attacks). This attack can not be avoided.
+            2) TLK: A weapon damage based proc will occur if you used a special (CS/DS/judge) or if you have a 5 stack (from auto attacks). This attack can not be avoided.
 
             Remember #2 happens regardless of #1 landing, it just requires the initial attack (autos, cs, etc) to land.
 
@@ -313,6 +314,7 @@ class spell_pal_seal_of_vengeance : public SpellScriptLoader
                 eventInfo.GetActor()->CastSpell(eventInfo.GetProcTarget(), DoTSpell, CastSpellExtraArgs(TRIGGERED_DONT_RESET_PERIODIC_TIMER).SetTriggeringAura(aurEff));
             }
 
+#ifdef LICH_KING
             //spell also does additional damage if we reached max stacks
             void HandleSeal(AuraEffect const* aurEff, ProcEventInfo& eventInfo)
             {
@@ -339,11 +341,14 @@ class spell_pal_seal_of_vengeance : public SpellScriptLoader
                 args.AddSpellBP0(amount);
                 caster->CastSpell(target, DamageSpell, args);
             }
+#endif
 
             void Register() override
             {
                 OnEffectProc += AuraEffectProcFn(spell_pal_seal_of_vengeance_AuraScript::HandleApplyDoT, EFFECT_0, SPELL_AURA_DUMMY);
+#ifdef LICH_KING
                 OnEffectProc += AuraEffectProcFn(spell_pal_seal_of_vengeance_AuraScript::HandleSeal, EFFECT_0, SPELL_AURA_DUMMY);
+#endif
             }
         };
 
@@ -775,6 +780,52 @@ class spell_pal_righteous_defense : public SpellScript
     }
 };
 
+// 20186 - Judgement of Wisdom
+class spell_pal_judgement_of_wisdom_mana : public AuraScript
+{
+    PrepareAuraScript(spell_pal_judgement_of_wisdom_mana);
+
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_PALADIN_JUDGEMENT_OF_WISDOM_MANA });
+    }
+
+    bool CheckProc(ProcEventInfo& eventInfo)
+    {
+        return eventInfo.GetProcTarget()->GetPowerType() == POWER_MANA;
+    }
+
+    void HandleProc(AuraEffect const* aurEff, ProcEventInfo& eventInfo)
+    {
+        //Default action will cast at wrong target
+        PreventDefaultAction();
+
+        Unit* caster = eventInfo.GetProcTarget();
+        CastSpellExtraArgs args(aurEff);
+        args.OriginalCaster = GetCasterGUID();
+#ifdef LICH_KING
+        SpellInfo const* spellInfo = sSpellMgr->AssertSpellInfo(SPELL_PALADIN_JUDGEMENT_OF_WISDOM_MANA);
+        uint32 triggeredSpellId = spellInfo->Id;
+
+        int32 const amount = CalculatePct(static_cast<int32>(caster->GetCreateMana()), spellInfo->Effects[EFFECT_0].CalcValue());
+        args.AddSpellBP0(amount);
+#else
+        uint32 triggeredSpellId = GetSpellInfo()->Effects[aurEff->GetEffIndex()].TriggerSpell;
+#endif
+        caster->CastSpell(nullptr, triggeredSpellId, args);
+    }
+
+    void Register() override
+    {
+        DoCheckProc += AuraCheckProcFn(spell_pal_judgement_of_wisdom_mana::CheckProc);
+#ifdef LICH_KING
+        OnEffectProc += AuraEffectProcFn(spell_pal_judgement_of_wisdom_mana::HandleProc, EFFECT_0, SPELL_AURA_DUMMY);
+#else
+        OnEffectProc += AuraEffectProcFn(spell_pal_judgement_of_wisdom_mana::HandleProc, EFFECT_0, SPELL_AURA_PROC_TRIGGER_SPELL);
+#endif
+    }
+};
+
 void AddSC_paladin_spell_scripts()
 {
     new spell_pal_judgement_of_light_heal();
@@ -790,4 +841,5 @@ void AddSC_paladin_spell_scripts()
     new spell_pal_item_healing_discount();
     new spell_pal_eye_for_an_eye();
     RegisterSpellScript(spell_pal_righteous_defense);
+    RegisterAuraScript(spell_pal_judgement_of_wisdom_mana);
 }

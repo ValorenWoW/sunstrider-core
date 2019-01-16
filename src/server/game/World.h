@@ -381,6 +381,8 @@ enum WorldConfigs
 
     CONFIG_CACHE_DATA_QUERIES,
 
+    CONFIG_RESTORE_DELETED_ITEMS,
+
     CONFIG_VALUE_COUNT,
 };
 
@@ -531,6 +533,15 @@ enum ScriptCommands
     SCRIPT_COMMAND_CALLSCRIPT_TO_UNIT =   21,              // datalong scriptid, lowguid datalong2, dataint table
     SCRIPT_COMMAND_KILL =                 22,              // datalong removecorpse
     SCRIPT_COMMAND_SMART_SET_DATA =       23,              // source = unit, datalong=id, datalong2=value // triggers SMART_EVENT_DATA_SET for unit if using SmartAI
+
+    // TrinityCore only
+    SCRIPT_COMMAND_ORIENTATION           = 30,               // source = Unit, target (datalong > 0) = Unit, datalong = > 0 turn source to face target, o = orientation
+    SCRIPT_COMMAND_EQUIP                 = 31,               // soucre = Creature, datalong = equipment id
+    SCRIPT_COMMAND_MODEL                 = 32,               // source = Creature, datalong = model id
+    SCRIPT_COMMAND_CLOSE_GOSSIP          = 33,               // source = Player
+    SCRIPT_COMMAND_PLAYMOVIE             = 34,               // source = Player, datalong = movie id
+    SCRIPT_COMMAND_MOVEMENT              = 35,               // source = Creature, datalong = MovementType, datalong2 = MovementDistance (spawndist f.ex.), dataint = pathid
+    SCRIPT_COMMAND_PLAY_ANIMKIT          = 36,               // source = Creature, datalong = AnimKit id (NOT ON 3.3.5A, DON'T REUSE)
 };
 
 enum WorldStates
@@ -771,9 +782,6 @@ class TC_GAME_API World
 
         void ResetEventSeasonalQuests(uint16 event_id);
 
-        uint32 GetCurrentQuestForPool(uint32 poolId);
-        bool IsQuestInAPool(uint32 questId);
-        bool IsQuestCurrentOfAPool(uint32 questId);
         bool IsPhishing(std::string msg);
         void LogPhishing(uint32 src, uint32 dst, std::string msg);
         void ResetDailyQuests();
@@ -801,9 +809,6 @@ class TC_GAME_API World
         void _UpdateRealmCharCount(PreparedQueryResult resultCharCount);
 
         void InitDailyQuestResetTime(bool loading = true);
-        void InitNewDataForQuestPools();
-        void LoadQuestPoolsData();
-        void UpdateMonitoring(uint32 diff);
     private:
 
         void UpdateArenaSeasonLogs();
@@ -879,9 +884,6 @@ class TC_GAME_API World
 
         //used versions
         std::string m_DBVersion;
-
-        std::vector<uint32> m_questInPools;
-        std::map<uint32, uint32> m_currentQuestInPools;
 
         std::map<uint32, AutoAnnounceMessage*> autoAnnounces;
 

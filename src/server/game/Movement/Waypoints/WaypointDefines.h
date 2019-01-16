@@ -3,6 +3,7 @@
 
 #include "Define.h"
 #include <vector>
+#include "G3D/Vector3.h"
 
 enum WaypointMoveType : uint32
 {
@@ -33,6 +34,9 @@ struct WaypointNode
         eventChance = 100;
     }
 
+    WaypointNode(uint32 _id, G3D::Vector3 vec, float _orientation = 0.f, uint32 _delay = 0) :
+        WaypointNode(_id, vec.x, vec.y, vec.z, _orientation, _delay)
+    { }
 
     uint32 id;
     float x;
@@ -43,6 +47,7 @@ struct WaypointNode
     uint32 eventId = 0;
     uint32 moveType = WAYPOINT_MOVE_TYPE_USE_UNIT_MOVEMENT_FLAG;
     uint8 eventChance = 0;
+    uint32 temp = 0; //for mmaps commands, remove me later
 };
 
 typedef std::vector<WaypointNode*> WaypointPathNodes;

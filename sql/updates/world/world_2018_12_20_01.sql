@@ -1,1 +1,0 @@
-DROP TABLE quest_start_scripts_tmp;

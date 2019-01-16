@@ -51,22 +51,6 @@ bool IsPassiveSpell(uint32 spellId)
     return spellInfo->IsPassive();
 }
 
-/*bool IsNoStackAuraDueToAura(uint32 spellId_1, uint32 effIndex_1, uint32 spellId_2, uint32 effIndex_2)
-{
-    SpellInfo const *spellInfo_1 = sSpellMgr->GetSpellInfo(spellId_1);
-    SpellInfo const *spellInfo_2 = sSpellMgr->GetSpellInfo(spellId_2);
-    if(!spellInfo_1 || !spellInfo_2) return false;
-    if(spellInfo_1->Id == spellId_2) return false;
-
-    if (spellInfo_1->Effects[effIndex_1].Effect != spellInfo_2->Effects[effIndex_2].Effect ||
-        spellInfo_1->Effects[effIndex_1].ItemType != spellInfo_2->Effects[effIndex_2].ItemType ||
-        spellInfo_1->Effects[effIndex_1].MiscValue != spellInfo_2->Effects[effIndex_2].MiscValue ||
-        spellInfo_1->Effects[effIndex_1].ApplyAuraName != spellInfo_2->Effects[effIndex_2].ApplyAuraName)
-        return false;
-
-    return true;
-}*/
-
 int32 CompareAuraRanks(uint32 spellId_1, uint32 effIndex_1, uint32 spellId_2, uint32 effIndex_2)
 {
     SpellInfo const*spellInfo_1 = sSpellMgr->GetSpellInfo(spellId_1);
@@ -1213,11 +1197,6 @@ bool SpellMgr::IsPrimaryProfessionSpell(uint32 spellId)
     return IsPrimaryProfessionSkill(skill);
 }
 
-bool SpellMgr::IsPrimaryProfessionFirstRankSpell(uint32 spellId) const
-{
-    return IsPrimaryProfessionSpell(spellId) && GetSpellRank(spellId)==1;
-}
-
 bool SpellMgr::IsNearbyEntryEffect(SpellInfo const* spellInfo, uint8 eff) const
 {
     return     spellInfo->Effects[eff].TargetA.GetTarget() == TARGET_UNIT_NEARBY_ENTRY
@@ -1278,8 +1257,8 @@ void SpellMgr::LoadSpellRequired()
         uint32 spell_id = fields[0].GetUInt32();
         uint32 spell_req = fields[1].GetUInt32();
 
-        mSpellsReqSpell.insert (std::pair<uint32, uint32>(spell_req, spell_id));
-        mSpellReq[spell_id] = spell_req;
+        mSpellReq.insert(std::pair<uint32, uint32>(spell_id, spell_req));
+        mSpellsReqSpell.insert(std::pair<uint32, uint32>(spell_req, spell_id));
         ++rows;
     } while( result->NextRow() );
 
@@ -2896,11 +2875,23 @@ void SpellMgr::LoadSpellInfoStore(bool reload /* = false */)
                 continue;
 
             //replace old object by a new one, but keep it's adress, so that code having already pointers to some SpellInfos can continue.
-            //May creates memory leaks...
+            //This WILL creates memory leaks...
+            SpellInfo* newSpellInfo = new SpellInfo(itr->second);
             if (mSpellInfoMap[i])
-                *mSpellInfoMap[i] = std::move(SpellInfo(itr->second));
+            {
+                //there may also be references to pointers within old SpellInfo structure... 
+                //also copy the new values into the old pointed at objects
+                for(uint8 j = EFFECT_0; j < MAX_SPELL_EFFECTS; j++)
+                    mSpellInfoMap[i]->Effects[j] = std::move(newSpellInfo->Effects[j]);
+  
+                //there are other pointers here... all should be copied
+
+                //and yes this is ugly, don't ever reload spell_template in production
+
+                *mSpellInfoMap[i] = std::move(*newSpellInfo);
+            }
             else
-                mSpellInfoMap[i] = new SpellInfo(itr->second);
+                mSpellInfoMap[i] = newSpellInfo;
         }
     }
 
@@ -3069,6 +3060,12 @@ void SpellMgr::LoadSpellInfoCustomAttributes()
 
         if (SpellMgr::IsBinaryMagicResistanceSpell(spellInfo))
             spellInfo->AttributesCu |= SPELL_ATTR0_CU_BINARY_SPELL;
+
+        if (spellInfo->Speed > 0.0f)
+            if (SpellVisualEntry const* spellVisual = sSpellVisualStore.LookupEntry(spellInfo->SpellVisual))
+                if (spellVisual->HasMissile)
+                    if (spellVisual->MissileModel == -4 || spellVisual->MissileModel == -5)
+                        spellInfo->AttributesCu |= SPELL_ATTR0_CU_NEEDS_AMMO_DATA;
     }
 
     // addition for binary spells, omit spells triggering other spells
@@ -3690,6 +3687,27 @@ uint32 SpellMgr::GetSpellWithRank(uint32 spell_id, uint32 rank, bool strict) con
     else if (strict && rank > 1)
         return 0;
     return spell_id;
+}
+
+Trinity::IteratorPair<SpellRequiredMap::const_iterator> SpellMgr::GetSpellsRequiredForSpellBounds(uint32 spell_id) const
+{
+    return Trinity::Containers::MapEqualRange(mSpellReq, spell_id);
+}
+
+SpellsRequiringSpellMapBounds SpellMgr::GetSpellsRequiringSpellBounds(uint32 spell_id) const
+{
+    return mSpellsReqSpell.equal_range(spell_id);
+}
+
+bool SpellMgr::IsSpellRequiringSpell(uint32 spellid, uint32 req_spellid) const
+{
+    SpellsRequiringSpellMapBounds spellsRequiringSpell = GetSpellsRequiringSpellBounds(req_spellid);
+    for (SpellsRequiringSpellMap::const_iterator itr = spellsRequiringSpell.first; itr != spellsRequiringSpell.second; ++itr)
+    {
+        if (itr->second == spellid)
+            return true;
+    }
+    return false;
 }
 
 uint32 SpellMgr::GetLastSpellInChain(uint32 spell_id) const

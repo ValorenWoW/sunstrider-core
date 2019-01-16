@@ -163,6 +163,11 @@ std::string GameObject::GetAIName() const
     return sObjectMgr->GetGameObjectTemplate(GetEntry())->AIName;
 }
 
+GameObject* GameObject::GetLinkedTrap()
+{
+    return ObjectAccessor::GetGameObject(*this, m_linkedTrap);
+}
+
 void GameObject::BuildValuesUpdate(uint8 updateType, ByteBuffer* data, Player* target) const
 {
     if (!target)
@@ -470,7 +475,6 @@ bool GameObject::Create(ObjectGuid::LowType guidlow, uint32 name_id, Map *map, u
     if (goinfo->IsLargeGameObject())
         SetVisibilityDistanceOverride(VisibilityDistanceType::Large);
 
-    /*TC
     if (uint32 linkedEntry = GetGOInfo()->GetLinkedGameObjectEntry())
     {
         GameObject* linkedGO = new GameObject();
@@ -479,9 +483,7 @@ bool GameObject::Create(ObjectGuid::LowType guidlow, uint32 name_id, Map *map, u
             SetLinkedTrap(linkedGO);
             map->AddToMap(linkedGO);
         }
-        else
-            delete linkedGO;
-    }*/
+    }
 
     return true;
 }
@@ -1281,7 +1283,7 @@ GameObjectTemplate const *GameObject::GetGOInfo() const
 /*********************************************************/
 bool GameObject::HasQuest(uint32 quest_id) const
 {
-    QuestRelations const& qr = sObjectMgr->mGOQuestRelations;
+    QuestRelations const& qr = sObjectMgr->_goQuestRelations;
     for(auto itr = qr.lower_bound(GetEntry()); itr != qr.upper_bound(GetEntry()); ++itr)
     {
         if(itr->second==quest_id)
@@ -1292,7 +1294,7 @@ bool GameObject::HasQuest(uint32 quest_id) const
 
 bool GameObject::HasInvolvedQuest(uint32 quest_id) const
 {
-    QuestRelations const& qr = sObjectMgr->mGOQuestInvolvedRelations;
+    QuestRelations const& qr = sObjectMgr->_goQuestInvolvedRelations;
     for(auto itr = qr.lower_bound(GetEntry()); itr != qr.upper_bound(GetEntry()); ++itr)
     {
         if(itr->second==quest_id)
@@ -1403,9 +1405,15 @@ bool GameObject::ActivateToQuest( Player *pTarget)const
                 return true;
             break;
         }
+        case GAMEOBJECT_TYPE_GENERIC:
+        {
+            if (GetGOInfo()->_generic.questID == -1 || pTarget->GetQuestStatus(GetGOInfo()->_generic.questID) == QUEST_STATUS_INCOMPLETE)
+                return true;
+            break;
+        }
         case GAMEOBJECT_TYPE_GOOBER:
         {
-            if(pTarget->GetQuestStatus(GetGOInfo()->goober.questId) == QUEST_STATUS_INCOMPLETE)
+            if(GetGOInfo()->goober.questId == -1 || pTarget->GetQuestStatus(GetGOInfo()->goober.questId) == QUEST_STATUS_INCOMPLETE)
                 return true;
             break;
         }
@@ -1571,6 +1579,7 @@ void GameObject::Use(Unit* user)
     // by default spell caster is user
     Unit* spellCaster = user;
     uint32 spellId = 0;
+    bool triggered = false;
 
     if (Player* playerUser = user->ToPlayer())
     {
@@ -1688,36 +1697,40 @@ void GameObject::Use(Unit* user)
                 {
                     TC_LOG_DEBUG("maps.script", "Goober ScriptStart id %u for GO entry %u (GUID %u).", info->goober.eventId, GetEntry(), GetSpawnId());
                     GetMap()->ScriptsStart(sEventScripts, info->goober.eventId, player, this);
-                   // EventInform(info->goober.eventId, user);
+                    EventInform(info->goober.eventId, user);
                 }
 
+                GetMap()->ScriptsStart(sGameObjectScripts, GetSpawnId(), player, this); //old gameobject_scripts
+
                 // possible quest objective for active quests
-                if (info->goober.questId && sObjectMgr->GetQuestTemplate(info->goober.questId))
+                if (info->goober.questId > 0 && sObjectMgr->GetQuestTemplate(info->goober.questId))
                 {
                     //Quest require to be active for GO using
                     if (player->GetQuestStatus(info->goober.questId) != QUEST_STATUS_INCOMPLETE)
                         break;
                 }
 
+                //TC has KillCreditGO, TODO
                 // possible quest objective for active quests
                 player->CastedCreatureOrGO(info->entry, GetGUID(), 0);
             }
 
-            if (info->GetAutoCloseTime())
-            {
-                SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_IN_USE);
-                SetLootState(GO_ACTIVATED, user);
-                if (!info->goober.customAnim)
-                    SetGoState(GO_STATE_ACTIVE);
-                else
-                    SendCustomAnim(GetGoAnimProgress());
-            }
+            if (uint32 trapEntry = info->goober.linkedTrapId)
+                TriggeringLinkedGameObject(trapEntry, user);
 
-            //sun: note that this overwrites the cooldown decided by info->GetCooldown() at the beginning of this func. Is this normal?
+            SetFlag(GAMEOBJECT_FLAGS, GO_FLAG_IN_USE);
+            SetLootState(GO_ACTIVATED, user);
+
+            if (info->goober.customAnim)
+                SendCustomAnim(GetGoAnimProgress()); 
+            else
+                SetGoState(GO_STATE_ACTIVE);
+
             m_cooldownTime = GetMap()->GetGameTimeMS() + info->GetAutoCloseTime();
 
             // cast this spell later if provided
             spellId = info->goober.spellId;
+            spellCaster = nullptr;
 
             break;
         }
@@ -1738,7 +1751,7 @@ void GameObject::Use(Unit* user)
             if (info->camera.eventID)
             {
                 GetMap()->ScriptsStart(sEventScripts, info->camera.eventID, player, this);
-                EventInform(info->camera.eventID/*, user*/);
+                EventInform(info->camera.eventID, user);
             }
 
             if (GetEntry() == 187578)
@@ -1850,30 +1863,41 @@ void GameObject::Use(Unit* user)
 
             AddUniqueUse(player);
 
+            if (info->summoningRitual.animSpell)
+            {
+                player->CastSpell(player, info->summoningRitual.animSpell, true);
+
+                // for this case, summoningRitual.spellId is always triggered
+                triggered = true;
+            }
+
             // full amount unique participants including original summoner
-            if(GetUniqueUseCount() < info->summoningRitual.reqParticipants)
+            if (GetUniqueUseCount() == info->summoningRitual.reqParticipants)
+            {
+
+                // in case summoning ritual caster is GO creator
+                spellCaster = caster;
+
+                if (!caster->GetCurrentSpell(CURRENT_CHANNELED_SPELL))
+                    return;
+
+                spellId = info->summoningRitual.spellId;
+
+                /*if (spellId == 18541) { // Doom guard
+                    if (Group* group = caster->ToPlayer()->GetGroup()) {
+                        if (Player* plrTarget = group->GetRandomMember())
+                            caster->CastSpell(plrTarget, 20625, TRIGGERED_FULL_MASK);
+                    }
+                }*/
+
+                // finish spell
+                caster->FinishSpell(CURRENT_CHANNELED_SPELL);
+
+                // can be deleted now
+                //if (!info->summoningRitual.ritualPersistent)
+                 SetLootState(GO_JUST_DEACTIVATED);
+            } else
                 return;
-
-            // in case summoning ritual caster is GO creator
-            spellCaster = caster;
-
-            if(!caster->GetCurrentSpell(CURRENT_CHANNELED_SPELL))
-                return;
-
-            spellId = info->summoningRitual.spellId;
-            
-            /*if (spellId == 18541) { // Doom guard
-                if (Group* group = caster->ToPlayer()->GetGroup()) {
-                    if (Player* plrTarget = group->GetRandomMember())
-                        caster->CastSpell(plrTarget, 20625, TRIGGERED_FULL_MASK);
-                }
-            }*/
-
-            // finish spell
-            caster->FinishSpell(CURRENT_CHANNELED_SPELL);
-
-            // can be deleted now
-            SetLootState(GO_JUST_DEACTIVATED);
 
             // go to end function to spell casting
             break;
@@ -2027,13 +2051,10 @@ void GameObject::Use(Unit* user)
         return;
     }
 
-    auto spell = new Spell(spellCaster, spellInfo, TRIGGERED_NONE);
-
-    // spell target is user of GO
-    SpellCastTargets targets;
-    targets.SetUnitTarget(user);
-
-    spell->prepare(targets);
+    if (spellCaster)
+        spellCaster->CastSpell(user, spellId, triggered);
+    else
+        CastSpell(user, spellId);
 }
 
 /*
@@ -2092,7 +2113,7 @@ uint32 GameObject::CastSpell(Unit* target, uint32 spellId, TriggerCastFlags trig
 }
 */
 
-void GameObject::EventInform(uint32 eventId)
+void GameObject::EventInform(uint32 eventId, WorldObject* invoker /*= nullptr*/)
 {
     if (!eventId)
         return;
@@ -2102,6 +2123,12 @@ void GameObject::EventInform(uint32 eventId)
 
     if (m_zoneScript)
         m_zoneScript->ProcessEvent(this, eventId);
+
+    /*TC
+    if (BattlegroundMap* bgMap = GetMap()->ToBattlegroundMap())
+        if (bgMap->GetBG())
+            bgMap->GetBG()->ProcessEvent(this, eventId, invoker);
+    */
 }
 
 uint32 GameObject::GetScriptId() const
@@ -2344,7 +2371,7 @@ uint32 GameObject::GetAutoCloseTime() const
         closeTime = 1;
         TC_LOG_ERROR("entities.gameobject", "Gameobject %u has an auto close time but is too low (%u is going to be rounded down to 0 after calculation). Using 1000ms instead.", GetGOInfo()->entry, autoCloseTime);
     }
-    return closeTime;
+    return closeTime * IN_MILLISECONDS;
     //TC:             return autoCloseTime;              // prior to 3.0.3, conversion was / 0x10000;
 }
 
