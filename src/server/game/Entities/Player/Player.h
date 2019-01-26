@@ -287,6 +287,23 @@ enum Pack58Type
     PACK58_TYPE_MAGIC = 3,
 };
 
+enum Pack70Step
+{
+    PACK70_STEP1,
+    PACK70_MELEE,
+    PACK70_HEAL,
+    PACK70_TANK,
+    PACK70_MAGIC,
+};
+
+enum Pack70Type
+{
+    PACK70_TYPE_MELEE = 0,
+    PACK70_TYPE_HEAL  = 1,
+    PACK70_TYPE_TANK  = 2,
+    PACK70_TYPE_MAGIC = 3,
+};
+
 struct Areas
 {
     uint32 areaID;
@@ -1713,6 +1730,7 @@ class TC_GAME_API Player : public Unit, public GridObject<Player>
         void LearnAllClassProficiencies();
 
         void DoPack58(uint8 step);
+        void DoPack70(uint8 step);
 
         uint32 GetFreeTalentPoints() const { return GetUInt32Value(PLAYER_CHARACTER_POINTS1); }
         void SetFreeTalentPoints(uint32 points);

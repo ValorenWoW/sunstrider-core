@@ -21022,51 +21022,72 @@ void Player::LearnAllClassSpells()
 
 void Player::DoPack58(uint8 step)
 {
-    if(step == PACK58_STEP1)
+    if (step == PACK58_STEP1)
     {
         uint32 destroyCount;
         GiveLevel(58);
         InitTalentForLevel();
         SetUInt32Value(PLAYER_XP,0);
-        LearnSpell(33388, false); //mount 75
+        LearnSpell(33388, false); // Mount 75
         uint32 mountid = 0;
-        switch(GetRace())
+        switch (GetRace())
         {
-        case RACE_HUMAN:           mountid = 5656; break;
-        case RACE_ORC:             mountid = 1132; break;
-        case RACE_DWARF:           mountid = 5873; break;
-        case RACE_NIGHTELF:        mountid = 8629; break;
-        case RACE_UNDEAD_PLAYER:   mountid = 13332; break;
-        case RACE_TAUREN:          mountid = 15277; break;
-        case RACE_GNOME:           mountid = 13322; break;
-        case RACE_TROLL:           mountid = 8592; break;
-        case RACE_BLOODELF:        mountid = 28927; break;
-        case RACE_DRAENEI:         mountid = 28481; break;
+        case RACE_HUMAN:
+            mountid = 5656; // Brown Horse Bridle
+            break;
+        case RACE_ORC:
+            mountid = 1132; // Horn of the Timber Wolf
+            break;
+        case RACE_DWARF:
+            mountid = 5873; // White Ram
+            break;
+        case RACE_NIGHTELF:
+            mountid = 8629; // Reins of the Striped Nightsaber
+            break;
+        case RACE_UNDEAD_PLAYER:
+            mountid = 13332; // Blue Skeletal Horse
+            break;
+        case RACE_TAUREN:
+            mountid = 15277; // Gray Kodo
+            break;
+        case RACE_GNOME:
+            mountid = 13322; // Unpainted Mechanostrider
+            break;
+        case RACE_TROLL:
+            mountid = 8592; // Whistle of the Violet Raptor
+            break;
+        case RACE_BLOODELF:
+            mountid = 28927; // Red Hawkstrider
+            break;
+        case RACE_DRAENEI:
+            mountid = 28481; // Brown Elekk
+            break;
         }
+
         StoreNewItemInBestSlots(mountid, 1);
         LearnAllClassProficiencies();
 
         uint32 addBags = 4;
 
-        //give totems to shamans
-        switch(GetClass())
+        // Give totems to shamans
+        switch (GetClass())
         {
             case CLASS_SHAMAN:
             {
-                uint32 totemsId[4] = {5176,5177,5175,5178};
-                for(uint32 i : totemsId)
+                uint32 totemsId[4] = {5176, 5177, 5175, 5178};
+                for (uint32 i : totemsId)
                     StoreNewItemInBestSlots(i, 1);
                 break;
             }
             case CLASS_ROGUE:
             {
-                StoreNewItemInBestSlots(5060, 1); //thieve tools
+                StoreNewItemInBestSlots(5060, 1); // Thieve Tools
                 break;
             }
             case CLASS_WARLOCK:
             {
-                StoreNewItemInBestSlots(6265, 20); //Soul shard
-                StoreNewItemInBestSlots(21872, 1); //Ebon Shadowbag
+                StoreNewItemInBestSlots(6265, 20); // Soul Shard
+                StoreNewItemInBestSlots(21872, 1); // Ebon Shadowbag
                 addBags = 3;
                 break;
             }
@@ -21074,14 +21095,13 @@ void Player::DoPack58(uint8 step)
             {
                 RemoveAmmo();
                 destroyCount = 10000;
-                DestroyItemCount(2512, destroyCount, true); //base arrows
+                DestroyItemCount(2512, destroyCount, true); // Base arrows
                 destroyCount = 10000;
-                DestroyItemCount(2516, destroyCount, true); //base bullets
+                DestroyItemCount(2516, destroyCount, true); // Base bullets
                 destroyCount = 1;
-                SwapItem(65299, 65317); //hacky hacky, try removing quiver if any found at first bag pos. Will fail if not empty.
-
-                StoreNewItemInBestSlots(19319, 1); //Harpy Hide Quiver
-                StoreNewItemInBestSlots(18042, 1400); //Thorium Headed Arrow (lvl 52)
+                SwapItem(65299, 65317); // Hacky hacky, try removing quiver if any found at first bag pos. Will fail if not empty.
+                StoreNewItemInBestSlots(19319, 1); // Harpy Hide Quiver
+                StoreNewItemInBestSlots(18042, 1400); // Thorium Headed Arrow (lvl 52)
                 SetAmmo(18042);
                 addBags = 3;
                 break;
@@ -21092,15 +21112,15 @@ void Player::DoPack58(uint8 step)
         destroyCount = 2;
         DestroyItemCount(159, destroyCount, true); // Destroy starting water
 
-        StoreNewItemInBestSlots(21841, addBags); //netherweave bags
+        StoreNewItemInBestSlots(21841, addBags); // Netherweave bags
 
-        StoreNewItemInBestSlots(27854, 20); //food
-        StoreNewItemInBestSlots(8766, 20); //drink
+        StoreNewItemInBestSlots(27854, 20); // Food
+        StoreNewItemInBestSlots(8766, 20); // Drink
 
         LearnAllClassSpells();
         UpdateSkillsToMaxSkillsForLevel();
 
-        //relocate homebind + some taxis
+        // Relocate homebind + some taxis
         WorldLocation loc;
         uint32 area_id;
         if (Player::TeamForRace(GetRace()) == ALLIANCE)
@@ -21122,7 +21142,9 @@ void Player::DoPack58(uint8 step)
             m_taxi.SetTaximaskNode(TAXI_EVERLOOK_ALLIANCE); 
             m_taxi.SetTaximaskNode(TAXI_FEATHERMOON);
             m_taxi.SetTaximaskNode(TAXI_NETHERGARDE_KEEP);
-        } else {
+        }
+        else if (Player::TeamForRace(GetRace()) == HORDE)
+        {
             loc = WorldLocation(1, 1632.54, -4440.77, 15.4584, 1.0637);
             area_id = 1637; // Orgrimmar
 
@@ -21143,32 +21165,44 @@ void Player::DoPack58(uint8 step)
             m_taxi.SetTaximaskNode(TAXI_TRAQUILIEN);
             m_taxi.SetTaximaskNode(TAXI_STONARD);
         }
+
         SetHomebind(loc, area_id);
 
         // Also give some money
-        ModifyMoney(250 * GOLD);
-    } else {
-        for(int i = EQUIPMENT_SLOT_START; i < EQUIPMENT_SLOT_END; i++)
+        ModifyMoney(250000000);
+    }
+    else
+    {
+        for (int i = EQUIPMENT_SLOT_START; i < EQUIPMENT_SLOT_END; i++)
         {
-            Item* currentItem = GetItemByPos( INVENTORY_SLOT_BAG_0, i );
-            if(!currentItem)
+            Item* currentItem = GetItemByPos(INVENTORY_SLOT_BAG_0, i);
+            if (!currentItem)
                 continue;
 
             DestroyItem(INVENTORY_SLOT_BAG_0, i, true);
         }
+
         uint8 packType;
-        switch(step)
+        switch (step)
         {
-        case PACK58_MELEE: packType = PACK58_TYPE_MELEE; break;
-        case PACK58_HEAL:  packType = PACK58_TYPE_HEAL; break;
-        case PACK58_TANK:  packType = PACK58_TYPE_TANK; break;
-        case PACK58_MAGIC: packType = PACK58_TYPE_MAGIC; break;
+        case PACK58_MELEE:
+            packType = PACK58_TYPE_MELEE;
+            break;
+        case PACK58_HEAL:
+            packType = PACK58_TYPE_HEAL;
+            break;
+        case PACK58_TANK:
+            packType = PACK58_TYPE_TANK;
+            break;
+        case PACK58_MAGIC:
+            packType = PACK58_TYPE_MAGIC;
+            break;
         }
 
         QueryResult result = WorldDatabase.PQuery("SELECT item, count FROM pack58 WHERE class = %u and type = %u", GetClass(), packType);
 
         uint32 count = 0;
-        if(result)
+        if (result)
         {
             do
             {
@@ -21176,16 +21210,226 @@ void Player::DoPack58(uint8 step)
                 Field *fields = result->Fetch();
                 uint32 itemid = fields[0].GetUInt32();
                 uint32 _count = fields[1].GetUInt32();
-                if(!itemid || !_count)
+                if (!itemid || !_count)
                     continue;
 
                 StoreNewItemInBestSlots(itemid, _count);
             }
-            while( result->NextRow() );
+            while (result->NextRow());
         }
-        if(count == 0)
-            TC_LOG_ERROR("entities.player","DoPack58 : no item for given class (%u) & type (%u)", GetClass(), packType);
+
+        if (count == 0)
+            TC_LOG_ERROR("entities.player", "DoPack58 : no item for given class (%u) & type (%u)", GetClass(), packType);
     }
+
+    SaveToDB();
+}
+
+void Player::DoPack70(uint8 step)
+{
+    if (step == PACK70_STEP1)
+    {
+        uint32 destroyCount;
+        GiveLevel(70); // Level toon to 70
+        InitTalentForLevel();
+        SetUInt32Value(PLAYER_XP,0); // Set XP bar to 0
+        LearnSpell(34091, false); // Epic Flying
+
+        uint32 mountid = 0;
+        switch (GetRace())
+        {
+        case RACE_HUMAN:
+            mountid = 18776; // Swift Palomino
+            break;
+        case RACE_ORC:
+            mountid = 12351; // Horn of the Arctic Wolf
+            break;
+        case RACE_DWARF:
+            mountid = 13328; // Black Ram
+            break;
+        case RACE_NIGHTELF:
+            mountid = 12303; // Reins of the Nightsaber
+            break;
+        case RACE_UNDEAD_PLAYER:
+            mountid = 13334; // Green Skeletal Warhorse
+            break;
+        case RACE_TAUREN:
+            mountid = 18795; // Great Gray Kodo
+            break;
+        case RACE_GNOME:
+            mountid = 13327; // Icy Blue Mechanostrider Mod A
+            break;
+        case RACE_TROLL:
+            mountid = 13317; // Whistle of the Ivory Raptor
+            break;
+        case RACE_BLOODELF:
+            mountid = 28936; // Swift Pink Hawkstrider
+            break;
+        case RACE_DRAENEI:
+            mountid = 29747; // Great Purple Elekk
+            break;
+        }
+
+        static constexpr uint32 mount_ashes_of_alar = 32458;
+        StoreNewItemInBestSlots(mount_ashes_of_alar, 1);
+        StoreNewItemInBestSlots(mountid, 1);
+        LearnAllClassProficiencies();
+
+        uint32 addBags = 4;
+
+        // Give totems to shamans
+        switch (GetClass())
+        {
+            case CLASS_SHAMAN:
+            {
+                uint32 totemsId[4] = {5176, 5177, 5175, 5178};
+                for (uint32 i : totemsId)
+                    StoreNewItemInBestSlots(i, 1);
+                break;
+            }
+            case CLASS_ROGUE:
+            {
+                StoreNewItemInBestSlots(5060, 1); // Thieve tools
+                break;
+            }
+            case CLASS_WARLOCK:
+            {
+                StoreNewItemInBestSlots(6265, 20); // Soul Shard
+                StoreNewItemInBestSlots(21872, 1); // Ebon Shadowbag
+                addBags = 3;
+                break;
+            }
+            case CLASS_HUNTER:
+            {
+                RemoveAmmo();
+                destroyCount = 10000;
+                DestroyItemCount(2512, destroyCount, true); // Base Arrows
+                destroyCount = 10000;
+                DestroyItemCount(2516, destroyCount, true); // Base Bullets
+                destroyCount = 1;
+                SwapItem(65299, 65317); // Hacky hacky, try removing quiver if any found at first bag pos. Will fail if not empty.
+                StoreNewItemInBestSlots(34105, 1); // Quiver of a Thousand Feathers
+                StoreNewItemInBestSlots(33803, 1400); // Adamantite Stinger
+                SetAmmo(18042);
+                addBags = 3;
+                break;
+            }
+            break;
+        }
+
+        destroyCount = 2;
+        DestroyItemCount(159, destroyCount, true); // Destroy starting water
+
+        StoreNewItemInBestSlots(21841, addBags); // Netherweave Bags
+
+        StoreNewItemInBestSlots(27854, 20); // Smoked Talbuk Venison (Food)
+        StoreNewItemInBestSlots(27860, 20); // Purified Draenic Water (Drink)
+
+        LearnAllClassSpells();
+        UpdateSkillsToMaxSkillsForLevel();
+
+        // Relocate homebind + some taxis
+        WorldLocation loc;
+        uint32 area_id;
+        if (Player::TeamForRace(GetRace()) == ALLIANCE)
+        {
+            loc = WorldLocation(0, -8866.468750, 671.831238, 97.903374, 2.154216);
+            area_id = 1519; // Stormwind
+
+            m_taxi.SetTaximaskNode(TAXI_STORMWIND);
+            m_taxi.SetTaximaskNode(TAXI_IRONFORGE);
+            m_taxi.SetTaximaskNode(TAXI_SOUTHSHORE);
+            m_taxi.SetTaximaskNode(TAXI_BOOTY_BAY_ALLIANCE);
+            m_taxi.SetTaximaskNode(TAXI_AUBERDINE);
+            m_taxi.SetTaximaskNode(TAXI_RUTHERAN);
+            m_taxi.SetTaximaskNode(TAXI_ASTRANAAR);
+            m_taxi.SetTaximaskNode(TAXI_THERAMODE);
+            m_taxi.SetTaximaskNode(TAXI_GADGETZAN_ALLIANCE);
+            m_taxi.SetTaximaskNode(TAXI_HINTERLANDS);
+            m_taxi.SetTaximaskNode(TAXI_STRANGLETHORN_REBEL_CAMP);
+            m_taxi.SetTaximaskNode(TAXI_EVERLOOK_ALLIANCE); 
+            m_taxi.SetTaximaskNode(TAXI_FEATHERMOON);
+            m_taxi.SetTaximaskNode(TAXI_NETHERGARDE_KEEP);
+        }
+        else if (Player::TeamForRace(GetRace()) == HORDE)
+        {
+            loc = WorldLocation(1, 1632.54, -4440.77, 15.4584, 1.0637);
+            area_id = 1637; // Orgrimmar
+
+            m_taxi.SetTaximaskNode(TAXI_ORGRIMMAR);
+            m_taxi.SetTaximaskNode(TAXI_UNDERCITY);
+            m_taxi.SetTaximaskNode(TAXI_HAMMERFALL);
+            m_taxi.SetTaximaskNode(TAXI_BOOTY_BAY_HORDE);
+            m_taxi.SetTaximaskNode(TAXI_KARGATH);
+            m_taxi.SetTaximaskNode(TAXI_GROMGOL);
+            m_taxi.SetTaximaskNode(TAXI_THUNDERBLUFF);
+            m_taxi.SetTaximaskNode(TAXI_ORGRIMMAR);
+            m_taxi.SetTaximaskNode(TAXI_THOUSAND_NEEDLES);
+            m_taxi.SetTaximaskNode(TAXI_GADGETZAN_HORDE);
+            m_taxi.SetTaximaskNode(TAXI_EVERLOOK_HORDE);
+            m_taxi.SetTaximaskNode(TAXI_SPLINTERTREE);
+            m_taxi.SetTaximaskNode(TAXI_TAURAJO);
+            m_taxi.SetTaximaskNode(TAXI_SILVERMOON);
+            m_taxi.SetTaximaskNode(TAXI_TRAQUILIEN);
+            m_taxi.SetTaximaskNode(TAXI_STONARD);
+        }
+
+        SetHomebind(loc, area_id);
+
+        // Also give some money
+        ModifyMoney(250000000);
+    }
+    else
+    {
+        for (int i = EQUIPMENT_SLOT_START; i < EQUIPMENT_SLOT_END; i++)
+        {
+            Item* currentItem = GetItemByPos(INVENTORY_SLOT_BAG_0, i);
+            if (!currentItem)
+                continue;
+
+            DestroyItem(INVENTORY_SLOT_BAG_0, i, true);
+        }
+
+        uint8 packType;
+        switch (step)
+        {
+        case PACK70_MELEE:
+            packType = PACK70_TYPE_MELEE;
+            break;
+        case PACK70_HEAL:
+            packType = PACK70_TYPE_HEAL;
+            break;
+        case PACK70_TANK:
+            packType = PACK70_TYPE_TANK;
+            break;
+        case PACK70_MAGIC:
+            packType = PACK70_TYPE_MAGIC;
+            break;
+        }
+
+        QueryResult result = WorldDatabase.PQuery("SELECT item, count FROM pack70 WHERE class = %u and type = %u", GetClass(), packType);
+
+        uint32 count = 0;
+        if (result)
+        {
+            do
+            {
+                count++;
+                Field *fields = result->Fetch();
+                uint32 itemid = fields[0].GetUInt32();
+                uint32 _count = fields[1].GetUInt32();
+                if (!itemid || !_count)
+                    continue;
+
+                StoreNewItemInBestSlots(itemid, _count);
+            }
+            while (result->NextRow());
+        }
+
+        if (count == 0)
+            TC_LOG_ERROR("entities.player", "DoPack70 : no item for given class (%u) & type (%u)", GetClass(), packType);
+    }
+
     SaveToDB();
 }
 
