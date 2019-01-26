@@ -21169,7 +21169,7 @@ void Player::DoPack58(uint8 step)
         SetHomebind(loc, area_id);
 
         // Also give some money
-        ModifyMoney(250000000);
+        ModifyMoney(25000 * GOLD);
     }
     else
     {
@@ -21377,7 +21377,7 @@ void Player::DoPack70(uint8 step)
         SetHomebind(loc, area_id);
 
         // Also give some money
-        ModifyMoney(250000000);
+        ModifyMoney(25000 * GOLD);
     }
     else
     {
